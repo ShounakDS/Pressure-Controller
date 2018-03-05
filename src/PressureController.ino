@@ -19,7 +19,8 @@
 #include "Variables.h"
 
 
-
+int testVariable;
+String S = "How are you today?"
 int count = 0;
 
 
