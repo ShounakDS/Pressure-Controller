@@ -22,7 +22,7 @@
 int testVariable;
 String S = "How are you today?"
 int count = 0;
-
+String Sd = "How are you Sumeeet?"
 
 void setup() {
   // Put initialization like pinMode and begin functions here.
