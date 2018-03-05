@@ -44,7 +44,7 @@ void setup() {
   tft.setCursor(0,0);
   tft.setTextWrap(LOW);
   Serial1.begin(9600);
-  Serial.begin(115200);
+  Serial.begin(9600);
   Serial.println("Test Start!!");
   initMax7219();
   clearMax();
@@ -83,15 +83,14 @@ void loop()
         }
          //displayBargraph(count);
         //displayMax(cyclicRotate(0x01),1);
-       // printOLED(displayValue,pvUnit,setScreen);
-
+        printValue = printOLED(displayValue,pvUnit,setScreen);
         MCP.newConversion(); // New conversion is initiated
 
         float Voltage=MCP.measure(); // Measure, note that the library waits for a complete conversion
 
-        Serial.print("Voltage = "); // print result
-        Serial.print(Voltage);
-        Serial.println(" microVolt");
+        //Serial.print("Voltage = "); // print result
+        //Serial.print(Voltage);
+        //Serial.println(" microVolt");
 
         checkRelayStatus(displayValue,&relay1,relay1Pin);
         checkRelayStatus(displayValue,&relay2,relay2Pin);
@@ -114,7 +113,7 @@ void loop()
 // Functions
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void printOLED(long printValue,int unit,uint8_t screen)
+float printOLED(long printValue,int unit,uint8_t screen)
 {
 
   float tempVar;
@@ -128,21 +127,21 @@ void printOLED(long printValue,int unit,uint8_t screen)
   }
   if(screen == 0)
   {
-      screen1(printValue,unit);
+      return screen1(printValue,unit);
   }
    if(screen == 1)
   {
-      screen2(printValue,unit);
+      return screen2(printValue,unit);
   }
    if(screen == 2)
   {
-      screen3(printValue,unit);
+      return screen3(printValue,unit);
   }
 }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// Screen 1
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void screen1(long value,int unit)
+float screen1(long value,int unit)
 {
     float var;
     tft.setFont(ARIAL_36);
@@ -191,13 +190,13 @@ void screen1(long value,int unit)
    tft.setCursor(50,85);
    tft.setTextColor(WHITE);
    tft.print(unitNames[unit]);
-   tft.fillRect(0,0,128,20,printSector(displayValue));
-
+   tft.fillRect(0,0,128,20,printSector(var));
+   return var/10;
 }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// Screen 2
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void screen2(long value,int unit)
+float screen2(long value,int unit)
 {
     float var;
     tft.setFont(ARIAL_36);
@@ -246,16 +245,18 @@ void screen2(long value,int unit)
     tft.setCursor(0,0);
     tft.setTextColor(WHITE);
     tft.print(unitNames[unit]);
-    tft.fillRect(60,0,128,20,printSector(displayValue));
+    tft.fillRect(60,0,128,20,printSector(var));
     printRelayStatus();
+    return var/10;
 }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// Screen 3
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void screen3(long value,int unit)
+float screen3(long value,int unit)
 {
     float var;
     tft.setFont(ARIAL_8_N);
+    fgColor = WHITE;
     tft.setTextColor(WHITE);
     if(unit == 0)
     {
@@ -265,7 +266,7 @@ void screen3(long value,int unit)
         tft.drawChar(13,0,hunds,fgColor,bgColor,1);
         tft.drawChar(26,0,tens,fgColor,bgColor,1);
         tft.drawChar(39,0,'.',fgColor,bgColor,1);
-        tft.drawChar(45,0,ones,fgColor,bgColor,1);///Print for BAR
+        tft.drawChar(52,0,ones,fgColor,bgColor,1);///Print for BAR
     }
     if(unit == 1)
     {
@@ -284,7 +285,7 @@ void screen3(long value,int unit)
         tft.drawChar(13,0,hunds,fgColor,bgColor,1);
         tft.drawChar(26,0,tens,fgColor,bgColor,1);
         tft.drawChar(39,0,'.',fgColor,bgColor,1);
-        tft.drawChar(45,0,ones,fgColor,bgColor,1);
+        tft.drawChar(52,0,ones,fgColor,bgColor,1);
     }
     if(unit == 3)
     {
@@ -294,14 +295,14 @@ void screen3(long value,int unit)
         tft.drawChar(13,0,hunds,fgColor,bgColor,1);
         tft.drawChar(26,0,tens,fgColor,bgColor,1);
         tft.drawChar(39,0,'.',fgColor,bgColor,1);
-        tft.drawChar(45,0,ones,fgColor,bgColor,1);;///Print for MPa
+        tft.drawChar(52,0,ones,fgColor,bgColor,1);;///Print for MPa
     }
    ////// Temperature
 
   tft.setFont(ARIAL_12);
   tft.setCursor(0, 30);
-  tft.print("Kg/cm2");
-  tft.setCursor(116, 30);
+  tft.print(unitNames[unit]);
+  tft.setCursor(0, 110);
   tft.print("R1");
 
   ////// Relay Upper
@@ -337,13 +338,14 @@ void screen3(long value,int unit)
   tft.drawChar(62,86,0x19,WHITE,bgColor,2);
   tft.fillCircle(116, 116, 9, WHITE);
   tft.drawBitmap(109, 110, heart, 16, 16,RED);
-
+  tft.fillRect(77,0,128,40,printSector(var));
+  return var/10;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// Screen 4
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void screen4()
+float screen4()
 {
 
 
@@ -671,7 +673,7 @@ void serialEvent()
       if(Serial1.available())
       {
         inString = Serial1.readStringUntil('~');
-        tft.println(inString);
+        //tft.println(inString);
       }
       //////////////////////////////////////////////////////////////////////////////////////////////////////////
       if(inString == "Orion")
@@ -683,6 +685,19 @@ void serialEvent()
       {
 
         Serial1.println("KSNO=KU12345,KBNO=170120,TSNO=2072756,TBNO=161225,NEWDEVICE=1,PASSSUPER=abc123,PASSADMIN=abc123,PASSUSER=abc123,RANGEL=0000,RANGEH=6000,VALUE=INT,SENSOR=1,OUTPUT=3,WIFISSID=skynet,WIFIPASS=password,MODE=1,DIA=,DNST=,UNIT=2,SCREEN=2,ZONE1L=ml,ZONE1H=INT,ZONE1CL=INT,ZONE2L=INT,ZONE2H=INT,ZONE2CL=INT,ZONE3L=INT,ZONE3H=INT,ZONE3CL=INT,ZONE4L=INT,ZONE4H=INT,ZONE4CL=INT,R1LS=INT,R1LD=INT,R1US=INT,R1UD=INT,R1MR=INT,R2LS=INT,R2LD=INT,R2US=INT,R2UD=INT,R2MR=INT,R3LS=INT,R3LD=INT,R3US=INT,R3UD=INT,R3MR=INT,R4LS=INT,R4LD=INT,R4US=INT,R4UD=INT,R4MR=INT,OUTCALZ=INT,OUTCALS=INT,SCANTIME=INT,DATALOGSTS=BOOLEAN,DATALOGTIME=INT,DISPSCROLLTIME=INT,DISPSCROLLSTS=BOOLEAN,CALDUE=STRING,TAGNO=INT,MODEL=STRING,FIRMWARE=STRING,~");
+
+      }
+      //////////////////////////////////////////////////////////////////////////////////////////////////////////
+      //Live
+      if(inString.charAt(0) == 'L' )
+      {
+        Serial1.print("#");
+        Serial1.print(printValue);
+        Serial1.println("~");
+        Serial.print("#");
+        Serial.print(printValue);
+        Serial.println("~");
+
 
       }
       //////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -700,7 +715,7 @@ void serialEvent()
         tempChar = inString.charAt(6);
         setScreen = tempChar - 48;
         EEPROM.write(ADD_SCREEN ,setScreen);
-       // tft.fillRect(0,0,128,128,BLACK);
+        tft.fillRect(0,0,128,128,BLACK);
 
       }
       //////////////////////////////////////////////////////////////////////////////////////////////////////////

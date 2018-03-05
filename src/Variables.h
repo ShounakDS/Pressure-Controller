@@ -193,7 +193,7 @@ char charPos3[8] = {20,35,50,80};
 uint8_t colon = 0;
 unsigned char dispNow = 0;
 int sensorValue = 0;  // variable to store the value coming from the sensor
-
+float printValue;
 volatile unsigned int setRelay,setDelay;
 
 long adcValue,sensorInput,displayValue;
