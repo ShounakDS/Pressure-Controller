@@ -125,23 +125,23 @@ Adafruit_SSD1351 tft = Adafruit_SSD1351(cs, dc, rst);
 // Create IntervalTimer objects
 IntervalTimer myTimer;
 
-MCP3424 MCP(6); // Declaration of MCP3424
+MCP3424 MCP(0); // Declaration of MCP3424
 
 typedef struct Relay {
-  unsigned int lowerSet;
-  unsigned int lowerDelay;
-  unsigned int upperSet;
-  unsigned int upperDelay;
+  uint16_t lowerSet;
+  uint16_t lowerDelay;
+  uint16_t upperSet;
+  uint16_t upperDelay;
   uint8_t manRst;
-  unsigned int lowerCount = 0,upperCount = 0;
+  uint8_t lowerCount = 0,upperCount = 0;
   boolean upperFlag,lowerFlag;
 
 };
 
 typedef struct Sector {
- unsigned int lowerSet;
- unsigned int upperSet;
- unsigned int color;
+ uint16_t lowerSet;
+ uint16_t upperSet;
+ uint16_t color;
 };
 
 
@@ -164,7 +164,7 @@ volatile boolean nextinc010 = LOW;
 //////////////      Volatile Temporary Variables   //////////////////////////
 
 volatile int inc0,inc1,inc2,inc3,inc4,pos;
-int  tempVar[10];
+uint16_t  tempVar[10];
 volatile unsigned int seconds,prevSeconds;
 uint8_t inc,next,tempNext;
 
@@ -175,7 +175,7 @@ uint8_t pvUnit,mode = 0;
 Relay relay1,relay2,relay3,relay4;
 Sector sector1,sector2,sector3,sector4;
 uint8_t dataLogStatus,dispScroll  = 0;
-unsigned int scanTime,scrollTime;
+uint8_t  scanTime,scrollTime;
 uint8_t hour,minute,sec,day,month;
 uint16_t year;
 
@@ -183,8 +183,8 @@ uint16_t year;
 char serialNo[10],batchNo[4],sensorType,outputType;
 
 //////////////////////   Other Variables    /////////////////////////////////
-unsigned int color,fgColor,bgColor,selColor,clockColor;
-unsigned int tenthous,thous,hunds,ones,tens;
+uint16_t color,fgColor,bgColor,selColor,clockColor;
+uint8_t tenthous,thous,hunds,ones,tens;
 uint8_t i,j,k;
 uint8_t dispChange = 0,displayMode = 0;
 char charPos1[8] = {0,15,45,60,90,105};
@@ -192,7 +192,7 @@ char charPos2[8] = {0,15,30,45,60,75,90,105};
 char charPos3[8] = {20,35,50,80};
 uint8_t colon = 0;
 unsigned char dispNow = 0;
-int sensorValue = 0;  // variable to store the value coming from the sensor
+uint16_t sensorValue = 0;  // variable to store the value coming from the sensor
 float printValue;
 volatile unsigned int setRelay,setDelay;
 

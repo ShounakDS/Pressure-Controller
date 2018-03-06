@@ -48,7 +48,7 @@ void setup() {
   Serial.println("Test Start!!");
   initMax7219();
   clearMax();
-  MCP.begin(6);
+  MCP.begin();
   MCP.configuration(0,16,0,1); // Channel 1, 16 bits resolution, one-shot mode, amplifier gain = 1
 
   /////////////////////////////   Initializing Variables  //////////////////////////////////////////////////
@@ -88,9 +88,9 @@ void loop()
 
         float Voltage=MCP.measure(); // Measure, note that the library waits for a complete conversion
 
-        //Serial.print("Voltage = "); // print result
-        //Serial.print(Voltage);
-        //Serial.println(" microVolt");
+        Serial.print("Voltage = "); // print result
+        Serial.print(Voltage);
+        Serial.println(" microVolt");
 
         checkRelayStatus(displayValue,&relay1,relay1Pin);
         checkRelayStatus(displayValue,&relay2,relay2Pin);
@@ -334,8 +334,8 @@ float screen3(long value,int unit)
   tft.drawFastVLine(74, 0, 40, GRAY);
   tft.drawFastVLine(73, 0, 40, GRAY);
 
-  tft.drawChar(62,54,0x18,WHITE,bgColor,2);
-  tft.drawChar(62,86,0x19,WHITE,bgColor,2);
+  tft.drawChar(62,54,0x18,RED,bgColor,2);
+  tft.drawChar(62,86,0x19,RED,bgColor,2);
   tft.fillCircle(116, 116, 9, WHITE);
   tft.drawBitmap(109, 110, heart, 16, 16,RED);
   tft.fillRect(77,0,128,40,printSector(var));
