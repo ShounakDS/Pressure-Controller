@@ -49,7 +49,7 @@ void setup() {
   initMax7219();
   clearMax();
   MCP.begin();
-  MCP.configuration(0,16,0,1); // Channel 1, 16 bits resolution, one-shot mode, amplifier gain = 1
+  MCP.configuration(0,14,0,1); // Channel 1, 16 bits resolution, one-shot mode, amplifier gain = 1
 
   /////////////////////////////   Initializing Variables  //////////////////////////////////////////////////
 
