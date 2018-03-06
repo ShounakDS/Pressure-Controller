@@ -102,7 +102,7 @@ case 12:
 
  _resultat |= long(_buffer[0] & 0x80) << 24;
 
- _resultat = _resultat*1000.0/_PGA;
+ //_resultat = _resultat*1000.0/_PGA;
 
  break;
 
@@ -112,7 +112,7 @@ _resultat = (((long)_buffer[0] & 0xBF) << 8) | ((long)_buffer[1] & 0xFF);
 
 _resultat |= long(_buffer[0] & 0x80) << 24;
 
-_resultat = _resultat*250/_PGA;
+//_resultat = _resultat*250/_PGA;
 
  break;
 
@@ -122,7 +122,7 @@ _resultat = (((long)_buffer[0] & 0x7F) << 8) | ((long)_buffer[1] & 0xFF);
 
  _resultat |= long(_buffer[0] & 0x80) << 24;
 
-_resultat = _resultat*62.5/_PGA;
+//_resultat = _resultat*62.5/_PGA;
 
  break;
 
@@ -132,7 +132,7 @@ _resultat = (((long)_buffer[0] & 0x01) << 16) | (((long)_buffer[1] & 0xFF) <<8) 
 
 _resultat |=((long)_buffer[0] & 0x80) << 24;
 
-_resultat = _resultat*15.625/_PGA;
+//_resultat = _resultat*15.625/_PGA;
 
   break;
 }
