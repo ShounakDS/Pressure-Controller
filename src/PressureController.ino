@@ -1,5 +1,5 @@
 // This #include statement was automatically added by the Particle IDE.
-#include "MCP3424.h"
+//#include "MCP3424.h"
 
 
 /*
@@ -48,8 +48,10 @@ void setup() {
   Serial.println("Test Start!!");
   initMax7219();
   clearMax();
-  MCP.begin();
-  MCP.configuration(0,16,1,1); // Channel 1, 16 bits resolution, one-shot mode, amplifier gain = 1
+  Wire.begin();
+  initMCP3424(0x68,0,3,0);    /// add, sr,pga,ch
+
+
 
   /////////////////////////////   Initializing Variables  //////////////////////////////////////////////////
 
@@ -76,22 +78,25 @@ void loop()
 
     if( seconds > prevSeconds)
     {
-
-        if(seconds%5 == 0)
-        {
-            displayValue = random(0,6000);
-        }
          //displayBargraph(count);
         //displayMax(cyclicRotate(0x01),1);
-        printValue = printOLED(displayValue,pvUnit,setScreen);
-        MCP.newConversion(); // New conversion is initiated
 
-        float Voltage=MCP.measure(); // Measure, note that the library waits for a complete conversion
+      //  MCP.newConversion(); // New conversion is initiated
 
-        Serial.print("Voltage = "); // print result
-        Serial.print(Voltage);
-        Serial.println(" microVolt");
+        //float Voltage=MCP.measure(); // Measure, note that the library waits for a complete conversion
 
+      //  Serial.print("Voltage = "); // print result
+      //  Serial.print(Voltage);
+      //  Serial.println(" microVolt");
+        initMCP3424(0x68,3,3,0);    /// add, sr,pga,ch
+        //adcValue = -65535;
+        adcValue = MCP3421getLong(0x68,3); /// add sr
+        displayValue = mapf(adcValue,-4270,46531,0,100);
+
+        //Serial.print(asdf,HEX);
+        //Serial.print("\t");
+        Serial.println(displayValue/10,1);
+        printValue = printOLED((long)displayValue,pvUnit,setScreen);
         checkRelayStatus(displayValue,&relay1,relay1Pin);
         checkRelayStatus(displayValue,&relay2,relay2Pin);
         checkRelayStatus(displayValue,&relay3,relay3Pin);
@@ -906,7 +911,61 @@ void serialEvent()
       }
 }
 
-
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// Functions for ADC Init and get value
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+void initMCP3424(uint8_t addr, uint8_t sr, uint8_t pga,uint8_t ch)
+{
+  uint8_t confWrite = 0;
+  //sr = sr & 3;
+  //pga = pga & 3;
+  //ch = ch & 3;
+  confWrite = confWrite | (ch << 5);
+  confWrite = confWrite | (sr << 2);
+  confWrite = confWrite | pga;
+  bitWrite (confWrite,7,1);   // RDY
+  bitWrite (confWrite,4,1);   // O/C 1
+  Wire.beginTransmission(addr);
+  Wire.write(confWrite);
+  Wire.endTransmission();
+}
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+signed long MCP3421getLong(uint8_t addr,uint8_t sr)
+{
+  uint8_t b2,b3,b4,confwrite,confRead;
+  signed long l1;
+  if(sr < 3)
+  {
+      Wire.requestFrom(addr, 3);
+      b2 = Wire.read();
+      b3 = Wire.read();
+      confRead = Wire.read();
+      Wire.endTransmission();
+      //Serial.println(confRead,HEX);
+      l1= (256* b2 )+ b3;
+  }
+  else
+  {
+       Wire.requestFrom(addr, 4);
+       b2 = Wire.read();
+       b3 = Wire.read();
+       b4 = Wire.read();
+       confRead = Wire.read();
+       Wire.endTransmission();
+       l1= (long) b3*256;
+       l1= l1 + b4;
+       l1= l1+0x10000 * b2;
+       if (b2 > 0x10)
+       {
+        l1= l1 + 0xFF000000;
+       }
+  }
+   return(l1);
+}
+float mapf(float x, float in_min, float in_max, float out_min, float out_max)
+{
+ return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Interrupts
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////

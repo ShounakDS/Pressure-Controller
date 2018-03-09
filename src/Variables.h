@@ -125,7 +125,7 @@ Adafruit_SSD1351 tft = Adafruit_SSD1351(cs, dc, rst);
 // Create IntervalTimer objects
 IntervalTimer myTimer;
 
-MCP3424 MCP(0); // Declaration of MCP3424
+//MCP3424 MCP(0); // Declaration of MCP3424
 
 typedef struct Relay {
   uint16_t lowerSet;
@@ -195,8 +195,8 @@ unsigned char dispNow = 0;
 uint16_t sensorValue = 0;  // variable to store the value coming from the sensor
 float printValue;
 volatile unsigned int setRelay,setDelay;
-
-long adcValue,sensorInput,displayValue;
+long  adcValue;
+float sensorInput,displayValue;
 long calDisp[11],calAdc[11];
 long rangeLow,rangeHigh,zero,span;
 double vin;
