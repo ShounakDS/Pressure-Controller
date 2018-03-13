@@ -1,5 +1,5 @@
 // This #include statement was automatically added by the Particle IDE.
-//#include "MCP3424.h"
+#include "MCP3424.h"
 
 
 /*
@@ -21,15 +21,18 @@
 
 int count = 0;
 
+SYSTEM_MODE(MANUAL);
 
 void setup() {
+  Time.zone(+5.5);
   // Put initialization like pinMode and begin functions here.
-  ////////////////////////////////    Pin Declarations   /////////////////////////////////////////////////////
+    ////////////////////////////////    Pin Declarations   /////////////////////////////////////////////////////
   pinMode(relay1Pin, OUTPUT);
   pinMode(relay2Pin, OUTPUT);
   pinMode(relay3Pin, OUTPUT);
   pinMode(relay4Pin, OUTPUT);
 
+  pinMode(BTAT,OUTPUT);
 
   digitalWrite(relay1Pin,LOW);
   digitalWrite(relay2Pin,LOW);
@@ -45,14 +48,17 @@ void setup() {
   tft.setTextWrap(LOW);
   Serial1.begin(9600);
   Serial.begin(9600);
-  Serial.println("Test Start!!");
   initMax7219();
   clearMax();
+<<<<<<< HEAD
   Wire.begin();
   initMCP3424(0x68,0,3,0);    /// add, sr,pga,ch
+  bluetoothMode(AT);
+=======
+  MCP.begin();
+  MCP.configuration(0,16,1,1); // Channel 1, 16 bits resolution, one-shot mode, amplifier gain = 1
 
-
-
+>>>>>>> parent of 2c76189... Deleted  MCP header File
   /////////////////////////////   Initializing Variables  //////////////////////////////////////////////////
 
   color = GREEN;
@@ -62,49 +68,121 @@ void setup() {
   clockColor = YELLOW;
   displayValue = 6000;
 
+  Serial.println("");
+  Serial.println(" _  __         _    _  _____ _______ _    _ ____  _    _    _    _ _______     ______   _____ ");
+  Serial.println("| |/ /    /\  | |  | |/ ____|__   __| |  | |  _ \| |  | |  | |  | |  __ \ \   / / __ \ / ____|");
+  Serial.println("| ' /    /  \ | |  | | (___    | |  | |  | | |_) | |__| |  | |  | | |  | \ \_/ / |  | | |  __ ");
+  Serial.println("|  <    / /\ \| |  | |\___ \   | |  | |  | |  _ <|  __  |  | |  | | |  | |\   /| |  | | | |_ |");
+  Serial.println("| . \  / ____ \ |__| |____) |  | |  | |__| | |_) | |  | |  | |__| | |__| | | | | |__| | |__| |");
+  Serial.println("|_|\_\/_/    \_\____/|_____/   |_|   \____/|____/|_|  |_|   \____/|_____/  |_|  \____/ \_____|");
+  Serial.println("");
+  Serial.println("");
+  Serial.println("Welcome to the Smart Pressure Transmitter Debug Console !!!!");
+  Serial.println("");
+  Serial.println("Press r to check the RELAY Settings.  ");
+  Serial.println("Press s to check the SECTOR Settings.  ");
+  Serial.println("Press t to check the TIME Settings.  ");
+  Serial.println("Press d to check the DATALOG Settings.  ");
+  Serial.println("Press b to turn on/off Bluetooth commands debugging.  ");
+  Serial.println("Press l to turn on/off Live Data debugging.  ");
+  Serial.println("Press w to check Wifi Settings.  ");
+  Serial.println("Press a to see device parameters.  ");
+
+
+
+
  /////////////////////////////   EEPROM Address Read     //////////////////////////////////////////////////
   readEEPROM();
   /////////////////////////////   RTC Data    //////////////////////////////////////////////////
-
+  if(wifiStatus)
+  {
+    WiFi.on();
+    WiFi.connect();
+    Particle.connect();
+  }
+  else
+  {
+    WiFi.off();
+  }
 }
 
 // loop() runs over and over again, as quickly as it can execute.
 void loop()
 {
   // The core of your code will likely live here.
+  if(wifiStatus)
+  {
+    if(Particle.connected)
+    {
+      Particle.process();
+    }
+  }
+
+
  serialEvent();
+ debugEvent();
+
  /////////////////////////////// Relay 1 //////////////////////////////////////
 
 
     if( seconds > prevSeconds)
     {
-         //displayBargraph(count);
+<<<<<<< HEAD
+        //displayBargraph(count);
         //displayMax(cyclicRotate(0x01),1);
-
-      //  MCP.newConversion(); // New conversion is initiated
-
-        //float Voltage=MCP.measure(); // Measure, note that the library waits for a complete conversion
-
-      //  Serial.print("Voltage = "); // print result
-      //  Serial.print(Voltage);
-      //  Serial.println(" microVolt");
         initMCP3424(0x68,3,3,0);    /// add, sr,pga,ch
-        //adcValue = -65535;
         adcValue = MCP3421getLong(0x68,3); /// add sr
         displayValue = mapf(adcValue,-4270,46531,0,100);
-
-        //Serial.print(asdf,HEX);
-        //Serial.print("\t");
-        Serial.println(displayValue/10,1);
         printValue = printOLED((long)displayValue,pvUnit,setScreen);
+=======
+
+        if(seconds%5 == 0)
+        {
+            displayValue = random(0,6000);
+        }
+         //displayBargraph(count);
+        //displayMax(cyclicRotate(0x01),1);
+        printValue = printOLED(displayValue,pvUnit,setScreen);
+        MCP.newConversion(); // New conversion is initiated
+
+        float Voltage=MCP.measure(); // Measure, note that the library waits for a complete conversion
+
+        Serial.print("Voltage = "); // print result
+        Serial.print(Voltage);
+        Serial.println(" microVolt");
+
+>>>>>>> parent of 2c76189... Deleted  MCP header File
         checkRelayStatus(displayValue,&relay1,relay1Pin);
         checkRelayStatus(displayValue,&relay2,relay2Pin);
         checkRelayStatus(displayValue,&relay3,relay3Pin);
         checkRelayStatus(displayValue,&relay4,relay4Pin);
-
-
         //////////////////////////////////////////////////////////////////////////////////////////////////////
-         prevSeconds = seconds;
+        if(DEBUG_LIVE)
+        {
+          Serial.print(modeNames[mode]);
+          Serial.print("\t");
+          Serial.print(unitNames[pvUnit]);
+          Serial.print("\t");
+          Serial.print("\t");
+          Serial.print(adcValue);
+          Serial.print("\t");
+          Serial.print("\t");
+          Serial.print("\t");
+          Serial.print(printValue);
+          Serial.print("\t");
+          Serial.print("\t");
+          Serial.print(relay1.upperFlag);
+          Serial.print("\t");
+          Serial.print("\t");
+          Serial.print(relay2.upperFlag);
+          Serial.print("\t");
+          Serial.print("\t");
+          Serial.print(relay3.upperFlag);
+          Serial.print("\t");
+          Serial.print("\t");
+          Serial.println(relay4.upperFlag);
+        } ///// END DEBUG_LIVE
+        prevSeconds = seconds;
     }
 
 }
@@ -117,6 +195,228 @@ void loop()
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Functions
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Debug Screen on Serial Console
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+void debugEvent()
+{
+  String inString,tempString;
+  char tempChar;
+  int tempInt;
+  int index[10];
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////
+  if(Serial.available())
+  {
+    inString = Serial.readString();
+  }
+  ///////////////////////////////////RELAY///////////////////////////////////////
+  if(inString.charAt(0) == 'r')
+  {
+    Serial.println("------------   RELAY SETTINGS    -------------------");
+    Serial.println("-----------------  RELAY 1 -------------------");
+    Serial.print("Relay1 Upper Set:    ");
+    Serial.println(relay1.upperSet);
+    Serial.print("Relay1 Upper Delay:  ");
+    Serial.println(relay1.upperDelay);
+    Serial.print("Relay1 Lower Set:    ");
+    Serial.println(relay1.lowerSet);
+    Serial.print("Relay1 Lower Delay:  ");
+    Serial.println(relay1.lowerDelay);
+    Serial.println("-----------------  RELAY 2 -------------------");
+    Serial.print("Relay 2 Upper Set:   ");
+    Serial.println(relay2.upperSet);
+    Serial.print("Relay 2 Upper Delay: ");
+    Serial.println(relay2.upperDelay);
+    Serial.print("Relay 2 Lower Set:   ");
+    Serial.println(relay2.lowerSet);
+    Serial.print("Relay 2 Lower Delay: ");
+    Serial.println(relay2.lowerDelay);
+    Serial.println("-----------------  RELAY 3 -------------------");
+    Serial.print("Relay 3 Upper Set:   ");
+    Serial.println(relay3.upperSet);
+    Serial.print("Relay3 Upper Delay:  ");
+    Serial.println(relay3.upperDelay);
+    Serial.print("Relay 3 Lower Set:   ");
+    Serial.println(relay3.lowerSet);
+    Serial.print("Relay 3 Lower Delay: ");
+    Serial.println(relay3.lowerDelay);
+    Serial.println("-----------------  RELAY 4 -------------------");
+    Serial.print("Relay 4 Upper Set:   ");
+    Serial.println(relay4.upperSet);
+    Serial.print("Relay 4 Upper Delay: ");
+    Serial.println(relay4.upperDelay);
+    Serial.print("Relay 4 Lower Set:   ");
+    Serial.println(relay4.lowerSet);
+    Serial.print("Relay 4 Lower Delay: ");
+    Serial.println(relay4.lowerDelay);
+    Serial.println("-------------------------------------------");
+  }
+  ///////////////////////////////////SECTOR///////////////////////////////////////
+  if(inString.charAt(0) == 's')
+  {
+    Serial.println("------------   SECTOR SETTINGS    -------------------");
+    Serial.println("-----------------  SECTOR 1 -------------------");
+    Serial.print("Sector 1 Lower Set:  ");
+    Serial.println(sector1.lowerSet);
+    Serial.print("Sector 1 Upper Set:  ");
+    Serial.println(sector1.upperSet);
+    Serial.print("Sector 1 Color:      ");
+    Serial.println(colorNames[sector1.color]);
+    Serial.println("-----------------  SECTOR 2 -------------------");
+    Serial.print("Sector 2 Lower Set:  ");
+    Serial.println(sector2.lowerSet);
+    Serial.print("Sector 2 Upper Set:  ");
+    Serial.println(sector2.upperSet);
+    Serial.print("Sector 2 Color:      ");
+    Serial.println(colorNames[sector2.color]);
+    Serial.println("-----------------  SECTOR 3 -------------------");
+    Serial.print("Sector 3 Lower Set:  ");
+    Serial.println(sector3.lowerSet);
+    Serial.print("Sector 3 Upper Set:  ");
+    Serial.println(sector3.upperSet);
+    Serial.print("Sector 3 Color:      ");
+    Serial.println(colorNames[sector3.color]);
+    Serial.println("-----------------  SECTOR 4 -------------------");
+    Serial.print("Sector 4 Lower Set:  ");
+    Serial.println(sector4.lowerSet);
+    Serial.print("Sector 4 Upper Set:  ");
+    Serial.println(sector4.upperSet);
+    Serial.print("Sector 4 Color:      ");
+    Serial.println(colorNames[sector4.color]);
+    Serial.println("-------------------------------------------");
+  }
+  ///////////////////////////////////LIVE///////////////////////////////////////
+  if(inString.charAt(0) == 'l')
+  {
+    if (DEBUG_LIVE)
+    {
+      DEBUG_LIVE = 0;
+      Serial.println("Live value debug stopped....");
+    }
+    else
+    {
+      DEBUG_LIVE = 1;
+      Serial.println("Live value debug start....");
+      Serial.println("------------   LIVE VARIABLE SATUS    -------------------");
+      Serial.println("Mode\t\tUnit\t\tADC Reading\t\tValue\t\tRelay 1\tRelay 2\tRelay 3\tRelay4 \t");
+    }
+  }
+  ///////////////////////////////////BLUETOOTH///////////////////////////////////////
+  if(inString.charAt(0) == 'b')
+  {
+    if (DEBUG_BLUETOOTH)
+    {
+      DEBUG_BLUETOOTH = 0;
+      Serial.println("Bluetooth debug stopped....");
+    }
+    else
+    {
+      DEBUG_BLUETOOTH = 1;
+      Serial.println("Bluetooth debug started....");
+    }
+  }
+  ///////////////////////////////////WIFI STATUS///////////////////////////////////////
+  if(inString.charAt(0) == 'w')
+  {
+    if(wifiStatus)
+    {
+      if(WiFi.ready())
+      {
+        Serial.println("Wifi is turned ON");
+        Serial.print("Wifi is Connected to Network :  ");
+        Serial.println(WiFi.SSID());
+      }
+    }
+    else
+    {
+      Serial.println("Wifi is turned OFF");
+    }
+    Serial.println("Following Access Points Stored in the Device :");
+    WiFiAccessPoint ap[5];
+    int found = WiFi.getCredentials(ap, 5);
+      Serial.print("  SSID  ");
+    Serial.print("\t");
+      Serial.print("SECURITY");
+    Serial.print("\t");
+    Serial.println(" CIPHER ");
+    for (int i = 0; i < found; i++)
+    {
+      Serial.print(ap[i].ssid);
+      // security is one of WLAN_SEC_UNSEC, WLAN_SEC_WEP, WLAN_SEC_WPA, WLAN_SEC_WPA2
+      Serial.print("\t");
+      Serial.print(wlanSec[ap[i].security]);
+      // cipher is one of WLAN_CIPHER_AES, WLAN_CIPHER_TKIP
+      Serial.print("\t");
+      Serial.println(wlanCipher[ap[i].cipher]);
+    }
+    byte mac[6];
+    Serial.print("Wifi MAC Address : ");
+    WiFi.macAddress(mac);
+    for (int i=0; i<6; i++)
+    {
+      Serial.printf("%02x%s", mac[i], i != 5 ? ":" : "");
+    }
+    Serial.println(" ");
+    Serial.print("Wifi received Signal Strength :  ");
+    Serial.print(WiFi.RSSI());
+    Serial.println("   dB ");
+  }// End If Wifi
+///////////////////////////////////TIME///////////////////////////////////////
+  if(inString.charAt(0) == 't')
+  {
+    Serial.println(Time.format(Time.local(), TIME_FORMAT_DEFAULT));
+  }// End Time
+///////////////////////////////////WIFI PROGRAM///////////////////////////////////////
+  if(inString.charAt(0) == 'W' )
+  {
+    int length = inString.length();
+    index[0] = inString.indexOf(',',2);
+    WifiSSID = inString.substring(2, index[0]);
+    tempString = inString.substring(index[0]+1,length);
+
+    index[1] = tempString.indexOf(',');
+    WifiPASS = tempString.substring(0, index[1]);
+
+    wifiStatus = tempString.substring(index[1]+1,length).toInt();
+    EEPROM.write(WIFI_STATUS,wifiStatus);
+    if((WifiSSID.toInt() != 0) && (WifiPASS.toInt() != 0))
+    {
+      WiFi.setCredentials(WifiSSID,WifiPASS);
+      Serial.print("Connecting to ");
+      Serial.println(WifiSSID);
+    }
+    if(wifiStatus)
+    {
+      Serial.println("Turning on Wifi...");
+      WiFi.on();
+      Serial.println("Connecting....");
+      WiFi.connect();
+      Serial.println("Connected!");
+      Serial.println("Connecting to Particle....");
+      Particle.connect();
+    }
+    else
+    {
+      WiFi.off();
+      Serial.println("Wifi is Off.");
+    }
+
+  }
+///////////////////////////////////ABOUT///////////////////////////////////////
+  if(inString.charAt(0) == 'a' )
+  {
+    Serial.printlnf("System version: %s", System.version().c_str());
+    Serial.print("Device ID : ");
+    Serial.println(System.deviceID());
+    Serial.print("Range : From - ");
+    Serial.print(rangeLow);
+    Serial.print("  to - ");
+    Serial.println(rangeHigh);
+  }
+///////////////////////////////////ABOUT///////////////////////////////////////
+}
+
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 float printOLED(long printValue,int unit,uint8_t screen)
 {
@@ -361,22 +661,27 @@ float screen4()
 unsigned int printSector(unsigned int value)
 {
     unsigned int color;
-    if((value > 0) && (value <= 1500))
+    if((value >=sector1.lowerSet) && (value <= sector1.upperSet))
     {
-        return GREEN;
+        return colorValues[sector1.color];
     }
-    if((value > 1500) && (value <= 3000))
+    else if((value > sector2.lowerSet) && (value <= sector2.upperSet))
     {
-        return YELLOW;
+        return colorValues[sector2.color];
     }
-    if((value > 3000) && (value <= 4500))
+    else if((value > sector3.lowerSet) && (value <= sector3.upperSet))
     {
-        return ORANGE;
+        return colorValues[sector3.color];
     }
-    if((value > 4500) && (value <= 6000))
+    else if((value > sector4.lowerSet) && (value <= sector4.upperSet))
     {
-       return RED;
+       return colorValues[sector4.color];
     }
+    else
+    {
+      return RED;
+    }
+
 
 }
 
@@ -600,6 +905,8 @@ void readEEPROM()
     //mode = EEPROM.read(ADD_MODE);
     pvUnit = EEPROM.read(ADD_UNIT);
     setScreen = EEPROM.read(ADD_SCREEN);
+    EEPROM.get(ADD_RANGEH,rangeHigh);
+    EEPROM.get(ADD_RANGEL,rangeLow);
 
     EEPROM.get(ADD_SEC1_UPPERSET,sector1.upperSet);
     EEPROM.get(ADD_SEC1_LOWERSET,sector1.lowerSet);
@@ -631,6 +938,10 @@ void readEEPROM()
     EEPROM.get(ADD_RLY4_LOWERSET,relay4.lowerSet);
     EEPROM.get(ADD_RLY4_LOWERDEL,relay4.lowerDelay);
 
+    wifiStatus = EEPROM.read(WIFI_STATUS);
+
+
+
 
 }
 
@@ -639,7 +950,7 @@ void readEEPROM()
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void checkRelayStatus(long value,Relay* tempRelay,int relayPin)
 {
-    if( value > tempRelay->upperSet)
+    if( value >= tempRelay->upperSet)
         {
           tempRelay->upperCount++;
               if(tempRelay->upperCount > tempRelay->upperDelay)
@@ -650,7 +961,7 @@ void checkRelayStatus(long value,Relay* tempRelay,int relayPin)
               }
 
         }
-        if( (value < tempRelay->lowerSet) && (tempRelay->upperFlag == HIGH) )
+        if( (value <= tempRelay->lowerSet) && (tempRelay->upperFlag == HIGH) )
         {
           tempRelay->lowerCount++;
               if(tempRelay->lowerCount > tempRelay->lowerDelay)
@@ -678,7 +989,11 @@ void serialEvent()
       if(Serial1.available())
       {
         inString = Serial1.readStringUntil('~');
-        //tft.println(inString);
+        if(DEBUG_BLUETOOTH)
+          {
+            Serial.println(inString);
+          }
+
       }
       //////////////////////////////////////////////////////////////////////////////////////////////////////////
       if(inString == "Orion")
@@ -702,13 +1017,13 @@ void serialEvent()
         Serial.print("#");
         Serial.print(printValue);
         Serial.println("~");
-
-
       }
       //////////////////////////////////////////////////////////////////////////////////////////////////////////
       //Mode
       if(inString.charAt(0) == 'M' )
       {
+        //// Mode, Unit, Image, Range High, Range low
+        int length = inString.length();
         tempChar = inString.charAt(2);
         mode = tempChar - 48;
         //EEPROM.put(ADD_MODE,mode);
@@ -720,6 +1035,16 @@ void serialEvent()
         tempChar = inString.charAt(6);
         setScreen = tempChar - 48;
         EEPROM.write(ADD_SCREEN ,setScreen);
+
+        index[0] = inString.indexOf(',',7);
+        rangeHigh = inString.substring(3, index[0]).toInt() * 10;
+        tempString = inString.substring(index[0]+1, length);
+        index[0] = tempString.indexOf(',');
+        rangeLow = tempString.substring(0, index[0]).toInt() * 10;
+
+        EEPROM.put(ADD_RANGEH,rangeHigh);
+        EEPROM.put(ADD_RANGEL,rangeLow);
+
         tft.fillRect(0,0,128,128,BLACK);
 
       }
@@ -746,6 +1071,8 @@ void serialEvent()
 
         index[0] = tempString.indexOf(',');
         tempRelay[3] = tempString.substring(0, index[0]).toInt();
+
+
 
         /////////////////////////////////////   RELAY 1   /////////////////////////////////////////////////////
         if(inString.charAt(1) == '1')
@@ -897,20 +1224,28 @@ void serialEvent()
 
         index[1] = tempString.indexOf(',');
         WifiPASS = tempString.substring(0, index[1]);
+        if((WifiSSID.toInt() != 0) && (WifiPASS.toInt() != 0))
+        {
+          WiFi.setCredentials(WifiSSID,WifiPASS);
+        }
+        wifiStatus = tempString.substring(index[1]+1,length).toInt();
+        EEPROM.write(WIFI_STATUS,wifiStatus);
 
-
-        tempString = tempString.substring(index[1]+1,length);
-
-        //wifiOn = tempString.toInt();
-
-        //tft.println(WifiSSID);
-        //tft.println(WifiPASS);
-
-        WiFi.setCredentials(WifiSSID,WifiPASS);
+        if(wifiStatus)
+        {
+          WiFi.on();
+          WiFi.connect();
+          Particle.connect();
+        }
+        else
+        {
+          WiFi.off();
+        }
 
       }
 }
 
+<<<<<<< HEAD
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// Functions for ADC Init and get value
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -966,6 +1301,25 @@ float mapf(float x, float in_min, float in_max, float out_min, float out_max)
 {
  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///  Bluetooth mode Selection
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+void bluetoothMode(uint8_t modeSel)
+{
+    if(modeSel == 0)
+    {
+        digitalWrite(BTAT,LOW);
+    }
+    else
+    {
+       digitalWrite(BTAT,HIGH);
+    }
+
+}
+=======
+
+>>>>>>> parent of 2c76189... Deleted  MCP header File
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Interrupts
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////

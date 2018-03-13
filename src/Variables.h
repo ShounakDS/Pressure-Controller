@@ -90,6 +90,9 @@
 #define ADD_DISPSCROLL_TIME   76
 #define ADD_DISPSCROLL_STS    77
 #define ADD_SCREEN   78
+#define WIFI_STATUS 79
+
+
 
 #define ADD_KUSRNO      200
 #define ADD_KUBATCHNO   220
@@ -111,6 +114,12 @@
 #define ADD_CAL_3       630
 #define ADD_CAL_4       640
 
+#define BTAT A2
+
+#define AT      1
+#define NORMAL  0
+
+
 
 #define bitRead(value, bit) (((value) >> (bit)) & 0x01)
 #define bitSet(value, bit) ((value) |= (1UL << (bit)))
@@ -125,7 +134,11 @@ Adafruit_SSD1351 tft = Adafruit_SSD1351(cs, dc, rst);
 // Create IntervalTimer objects
 IntervalTimer myTimer;
 
-//MCP3424 MCP(0); // Declaration of MCP3424
+<<<<<<< HEAD
+
+=======
+MCP3424 MCP(0); // Declaration of MCP3424
+>>>>>>> parent of 2c76189... Deleted  MCP header File
 
 typedef struct Relay {
   uint16_t lowerSet;
@@ -141,7 +154,7 @@ typedef struct Relay {
 typedef struct Sector {
  uint16_t lowerSet;
  uint16_t upperSet;
- uint16_t color;
+ uint8_t color;
 };
 
 
@@ -179,6 +192,11 @@ uint8_t  scanTime,scrollTime;
 uint8_t hour,minute,sec,day,month;
 uint16_t year;
 
+
+
+uint8_t DEBUG_LIVE=0;
+uint8_t DEBUG_BLUETOOTH=0;
+
 ///////////////// Read Only Variables //////////////////////////////////////
 char serialNo[10],batchNo[4],sensorType,outputType;
 
@@ -195,8 +213,8 @@ unsigned char dispNow = 0;
 uint16_t sensorValue = 0;  // variable to store the value coming from the sensor
 float printValue;
 volatile unsigned int setRelay,setDelay;
-long  adcValue;
-float sensorInput,displayValue;
+
+long adcValue,sensorInput,displayValue;
 long calDisp[11],calAdc[11];
 long rangeLow,rangeHigh,zero,span;
 double vin;
@@ -204,7 +222,9 @@ float f1;
 int outputValue,turnDownRatio;
 uint8_t setScreen = 0;
 String WifiSSID,WifiPASS;
+uint8_t wifiStatus = 0;
 
+uint16_t colorValues[4] = {0x07E0,0xFFE0,0xFB20, 0xF800}; //GREEN,YELLOW,ORANGE,RED
 //////////////////////  String Declarations     /////////////////////////////////
 
 char* menuNames[] = { "U n i t s           ",
@@ -256,9 +276,27 @@ char dotColon[2] = { ':',' '};
 char* outputNames[] = { "4-20mA ",
                        "0-5V"
                        };
+char* modeNames[] = { "Pressure ",
+                     "Force",
+                     "Level",
+                     "Differential Pressure",
+                     "Flow",
+                     "Temperature"
+                    };
+char* colorNames[] = { "Green ",
+                     "Yellow",
+                     "Orange",
+                     "Red",
+                    };
 
-
-
+char* wlanSec[] = { "Unsecured",
+                     "WEP",
+                     "WPA",
+                     "WPA2",
+                    };
+char* wlanCipher[] = { "AES",
+                     "TKIP",
+                    };
 const unsigned char heart [] PROGMEM = {
 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0C, 0x60, 0x1E, 0xF0, 0x3F, 0xF8, 0x7F, 0xFC, 0x7F, 0xFC,
 0x7F, 0xFC, 0x3F, 0xF8, 0x1F, 0xF0, 0x0F, 0xE0, 0x07, 0xC0, 0x03, 0x80, 0x00, 0x00, 0x00, 0x00
