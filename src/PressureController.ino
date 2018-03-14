@@ -1,7 +1,3 @@
-// This #include statement was automatically added by the Particle IDE.
-#include "MCP3424.h"
-
-
 /*
  * Project DPC_Ver1
  * Description: Bluetooth Serial Read and write
@@ -17,13 +13,16 @@
 #include "application.h"
 #include "fonts.h"
 #include "Variables.h"
-
+#include "SdFat.h"
 
 int count = 0;
 
+
 SYSTEM_MODE(MANUAL);
+STARTUP(bluetoothMode(AT));
 
 void setup() {
+
   Time.zone(+5.5);
   // Put initialization like pinMode and begin functions here.
     ////////////////////////////////    Pin Declarations   /////////////////////////////////////////////////////
@@ -32,7 +31,7 @@ void setup() {
   pinMode(relay3Pin, OUTPUT);
   pinMode(relay4Pin, OUTPUT);
 
-  pinMode(BTAT,OUTPUT);
+
 
   digitalWrite(relay1Pin,LOW);
   digitalWrite(relay2Pin,LOW);
@@ -50,23 +49,17 @@ void setup() {
   Serial.begin(9600);
   initMax7219();
   clearMax();
-<<<<<<< HEAD
   Wire.begin();
   initMCP3424(0x68,0,3,0);    /// add, sr,pga,ch
-  bluetoothMode(AT);
-=======
-  MCP.begin();
-  MCP.configuration(0,16,1,1); // Channel 1, 16 bits resolution, one-shot mode, amplifier gain = 1
-
->>>>>>> parent of 2c76189... Deleted  MCP header File
-  /////////////////////////////   Initializing Variables  //////////////////////////////////////////////////
-
+    /////////////////////////////   Initializing Variables  //////////////////////////////////////////////////
   color = GREEN;
   fgColor = WHITE;
   bgColor = BLACK;
   selColor = YELLOW;
   clockColor = YELLOW;
   displayValue = 6000;
+
+
 
   Serial.println("");
   Serial.println(" _  __         _    _  _____ _______ _    _ ____  _    _    _    _ _______     ______   _____ ");
@@ -90,7 +83,6 @@ void setup() {
 
 
 
-
  /////////////////////////////   EEPROM Address Read     //////////////////////////////////////////////////
   readEEPROM();
   /////////////////////////////   RTC Data    //////////////////////////////////////////////////
@@ -104,9 +96,11 @@ void setup() {
   {
     WiFi.off();
   }
-}
 
+}
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // loop() runs over and over again, as quickly as it can execute.
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void loop()
 {
   // The core of your code will likely live here.
@@ -127,35 +121,19 @@ void loop()
 
     if( seconds > prevSeconds)
     {
-<<<<<<< HEAD
         //displayBargraph(count);
         //displayMax(cyclicRotate(0x01),1);
         initMCP3424(0x68,3,3,0);    /// add, sr,pga,ch
         adcValue = MCP3421getLong(0x68,3); /// add sr
         displayValue = mapf(adcValue,-4270,46531,0,100);
         printValue = printOLED((long)displayValue,pvUnit,setScreen);
-=======
-
-        if(seconds%5 == 0)
-        {
-            displayValue = random(0,6000);
-        }
-         //displayBargraph(count);
-        //displayMax(cyclicRotate(0x01),1);
-        printValue = printOLED(displayValue,pvUnit,setScreen);
-        MCP.newConversion(); // New conversion is initiated
-
-        float Voltage=MCP.measure(); // Measure, note that the library waits for a complete conversion
-
-        Serial.print("Voltage = "); // print result
-        Serial.print(Voltage);
-        Serial.println(" microVolt");
-
->>>>>>> parent of 2c76189... Deleted  MCP header File
         checkRelayStatus(displayValue,&relay1,relay1Pin);
         checkRelayStatus(displayValue,&relay2,relay2Pin);
         checkRelayStatus(displayValue,&relay3,relay3Pin);
         checkRelayStatus(displayValue,&relay4,relay4Pin);
+        if(dataLogStatus){
+          Datalog();
+        }
         //////////////////////////////////////////////////////////////////////////////////////////////////////
         if(DEBUG_LIVE)
         {
@@ -186,10 +164,6 @@ void loop()
     }
 
 }
-
-
-
-
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -334,9 +308,9 @@ void debugEvent()
     Serial.println("Following Access Points Stored in the Device :");
     WiFiAccessPoint ap[5];
     int found = WiFi.getCredentials(ap, 5);
-      Serial.print("  SSID  ");
+    Serial.print("  SSID  ");
     Serial.print("\t");
-      Serial.print("SECURITY");
+    Serial.print("SECURITY");
     Serial.print("\t");
     Serial.println(" CIPHER ");
     for (int i = 0; i < found; i++)
@@ -364,7 +338,7 @@ void debugEvent()
 ///////////////////////////////////TIME///////////////////////////////////////
   if(inString.charAt(0) == 't')
   {
-    Serial.println(Time.format(Time.local(), TIME_FORMAT_DEFAULT));
+    Serial.println(Time.timeStr());
   }// End Time
 ///////////////////////////////////WIFI PROGRAM///////////////////////////////////////
   if(inString.charAt(0) == 'W' )
@@ -408,11 +382,23 @@ void debugEvent()
     Serial.printlnf("System version: %s", System.version().c_str());
     Serial.print("Device ID : ");
     Serial.println(System.deviceID());
-    Serial.print("Range : From - ");
-    Serial.print(rangeLow);
-    Serial.print("  to - ");
-    Serial.println(rangeHigh);
+    Serial.print("Range : From  ");
+    Serial.print(calDisp[0]);
+    Serial.print("  to  ");
+    Serial.println(calDisp[1]);
   }
+  if(inString.charAt(0) == 'd'){
+    if(dataLogStatus == 0){
+      dataLogStatus = 1;
+      Serial.println("Datalogging Started");
+    }
+    else{
+      dataLogStatus = 0;
+      Serial.println("Datalogging Stopped");
+    }
+  }
+
+
 ///////////////////////////////////ABOUT///////////////////////////////////////
 }
 
@@ -905,6 +891,7 @@ void readEEPROM()
     //mode = EEPROM.read(ADD_MODE);
     pvUnit = EEPROM.read(ADD_UNIT);
     setScreen = EEPROM.read(ADD_SCREEN);
+
     EEPROM.get(ADD_RANGEH,rangeHigh);
     EEPROM.get(ADD_RANGEL,rangeLow);
 
@@ -940,6 +927,10 @@ void readEEPROM()
 
     wifiStatus = EEPROM.read(WIFI_STATUS);
 
+    EEPROM.get(ADD_ADC_CAL_0,calAdc[0]);
+    EEPROM.get(ADD_ADC_CAL_1,calAdc[1]);
+    EEPROM.get(ADD_DISP_CAL_0,calDisp[0]);
+    EEPROM.get(ADD_DISP_CAL_1,calDisp[1]);
 
 
 
@@ -1203,6 +1194,32 @@ void serialEvent()
       //Calibration
       if(inString.charAt(0) == 'C' )
       {
+        int tempRelay[4];
+        int length = inString.length();
+
+        index[0] = inString.indexOf(',',2);
+        tempRelay[0] = inString.substring(2, index[0]).toInt();
+
+        tempString = inString.substring(index[0]+1, length);
+        index[0] = tempString.indexOf(',');
+        tempRelay[1] = tempString.substring(0, index[0]).toInt() * 10;
+
+        tempString = tempString.substring(index[0]+1,length);
+        index[0] = tempString.indexOf(',');
+        tempRelay[2] = tempString.substring(0, index[0]).toInt();
+
+        tempRelay[3] = tempString.substring(index[0]+1,length).toInt() *10;
+
+        calAdc[0] = tempRelay[0];
+        calDisp[0] = tempRelay[1];
+        calAdc[1] = tempRelay[2];
+        calDisp[1] = tempRelay[3];
+
+        EEPROM.put(ADD_ADC_CAL_0,calAdc[0]);
+        EEPROM.put(ADD_ADC_CAL_1,calAdc[1]);
+        EEPROM.put(ADD_DISP_CAL_0,calDisp[0]);
+        EEPROM.put(ADD_DISP_CAL_1,calDisp[1]);
+
 
 
       }
@@ -1245,7 +1262,6 @@ void serialEvent()
       }
 }
 
-<<<<<<< HEAD
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// Functions for ADC Init and get value
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1307,6 +1323,7 @@ float mapf(float x, float in_min, float in_max, float out_min, float out_max)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void bluetoothMode(uint8_t modeSel)
 {
+    pinMode(BTAT,OUTPUT);
     if(modeSel == 0)
     {
         digitalWrite(BTAT,LOW);
@@ -1317,9 +1334,82 @@ void bluetoothMode(uint8_t modeSel)
     }
 
 }
-=======
 
->>>>>>> parent of 2c76189... Deleted  MCP header File
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///  Bluetooth mode Selection
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+void Datalog(){
+  char day[2],month[2];
+  String fileName;
+  //fileName = "14033018.txt";
+  sprintf(day,"%02d",Time.day());
+  sprintf(month,"%02d",Time.month());
+  fileName = "DATA_" + String(day) + String(month) + String(Time.year()) + ".txt";
+  if (!sd.begin(chipSelect, SPI_HALF_SPEED)) {
+    sd.initErrorHalt();
+  }
+
+  if (!myFile.open(fileName, O_RDWR |O_AT_END)) {
+    Serial.print("No File with the name ");
+    Serial.print(fileName);
+    Serial.println(" found...");
+    //sd.errorHalt("opening test.txt for write failed");
+    myFile.open(fileName, O_RDWR | O_CREAT | O_AT_END));
+    Serial.print("Creating File....");
+    Serial.println(fileName);
+    myFile.println("Date,Mode,Unit,Process Value,Relay 1,Relay 2,Relay 3,Relay 4");
+
+
+  }
+  // if the file opened okay, write to it:
+  Serial.print("Writing to");
+  Serial.println(fileName);
+  myFile.print(Time.timeStr());
+  myFile.print(",");
+  myFile.print(modeNames[mode]);
+  myFile.print(",");
+  myFile.print(unitNames[pvUnit]);
+  myFile.print(",");
+  myFile.print(printValue);
+  myFile.print(",");
+  myFile.print(relay1.upperFlag);
+  myFile.print(",");
+  myFile.print(relay2.upperFlag);
+  myFile.print(",");
+  myFile.print(relay3.upperFlag);
+  myFile.print(",");
+  myFile.println(relay4.upperFlag);
+  myFile.close();
+  Serial.println("done.");
+
+
+}
+
+uint8_t readFile(String fileName)
+{
+      // re-open the file for reading:
+    if (!myFile.open(fileName, O_READ)) {
+      Serial.println("Could not open the File");
+      sd.errorHalt("opening test.txt for read failed");
+      return 0;
+    }
+    Serial.println(fileName);
+    Serial.print(myFile.fileSize());
+    Serial.println("  Bytes");
+    Serial.println("  Content:");
+
+    // read from the file until there's nothing else in it:
+    int data;
+    while ((data = myFile.read()) >= 0) {
+      Serial.write(data);
+    }
+
+    // close the file:
+    myFile.close();
+}
+
+
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Interrupts
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////

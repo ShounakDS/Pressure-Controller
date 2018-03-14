@@ -1,3 +1,5 @@
+#include<SdFat.h>
+
 // You can use any 5 pins; see note below about hardware vs software SPI
 #define cs   DAC
 #define sclk A3
@@ -26,6 +28,8 @@
 #define FAINTGRAY       0xA534
 #define DARKGREEN       0x0620
 
+#define LOW             0
+#define HIGH            1
 ////////////////////////// EEPROM Address Definitions ///////////////////////
 #define ADD_MODE             0
 #define ADD_UNIT             1
@@ -108,17 +112,31 @@
 #define ADD_KUBATCHNO   380
 
 
-#define ADD_CAL_0       600
-#define ADD_CAL_1       610
-#define ADD_CAL_2       620
-#define ADD_CAL_3       630
-#define ADD_CAL_4       640
+#define ADD_ADC_CAL_0       600
+#define ADD_ADC_CAL_1       604
+#define ADD_ADC_CAL_2       608
+#define ADD_ADC_CAL_3       612
+#define ADD_ADC_CAL_4       616
+
+#define ADD_DISP_CAL_0       620
+#define ADD_DISP_CAL_1       624
+#define ADD_DISP_CAL_2       628
+#define ADD_DISP_CAL_3       632
+#define ADD_DISP_CAL_4       636
+
+#define CALPOINTS   2
 
 #define BTAT A2
 
 #define AT      1
 #define NORMAL  0
 
+
+#define SPI_CONFIGURATION 0
+
+SdFat sd;
+const uint8_t chipSelect = D2;
+File myFile;
 
 
 #define bitRead(value, bit) (((value) >> (bit)) & 0x01)
@@ -134,11 +152,7 @@ Adafruit_SSD1351 tft = Adafruit_SSD1351(cs, dc, rst);
 // Create IntervalTimer objects
 IntervalTimer myTimer;
 
-<<<<<<< HEAD
 
-=======
-MCP3424 MCP(0); // Declaration of MCP3424
->>>>>>> parent of 2c76189... Deleted  MCP header File
 
 typedef struct Relay {
   uint16_t lowerSet;
@@ -187,10 +201,8 @@ uint8_t inc,next,tempNext;
 uint8_t pvUnit,mode = 0;
 Relay relay1,relay2,relay3,relay4;
 Sector sector1,sector2,sector3,sector4;
-uint8_t dataLogStatus,dispScroll  = 0;
+uint8_t dataLogStatus = 0,dispScroll  = 0;
 uint8_t  scanTime,scrollTime;
-uint8_t hour,minute,sec,day,month;
-uint16_t year;
 
 
 
@@ -213,9 +225,9 @@ unsigned char dispNow = 0;
 uint16_t sensorValue = 0;  // variable to store the value coming from the sensor
 float printValue;
 volatile unsigned int setRelay,setDelay;
-
-long adcValue,sensorInput,displayValue;
-long calDisp[11],calAdc[11];
+long  adcValue;
+float sensorInput,displayValue;
+long calDisp[5],calAdc[5];
 long rangeLow,rangeHigh,zero,span;
 double vin;
 float f1;
@@ -261,19 +273,19 @@ char* positionNames[] = { "O f f",
                        "O n   "
                      };
 char* autoNames[] = { "M a n u a l",
-                      "A u t o           "
+                      "A u t o"
                        };
-char* unitNames[] = { "Bar   ",
-                      "Psi   ",
+char* unitNames[] = { "Bar",
+                      "Psi",
                       "Kg/cm2",
-                      "MPa   ",
+                      "MPa",
                      };
 char* setupNames[] = { "I n f o               ",
                      "D i s p l a y   S c r o l l               ",
                      "S c r o l l   T i m e     ",
                      "H e l p      "};
 char dotColon[2] = { ':',' '};
-char* outputNames[] = { "4-20mA ",
+char* outputNames[] = { "4-20mA",
                        "0-5V"
                        };
 char* modeNames[] = { "Pressure ",
@@ -296,6 +308,11 @@ char* wlanSec[] = { "Unsecured",
                     };
 char* wlanCipher[] = { "AES",
                      "TKIP",
+                    };
+char* fileType[] = { "DATA_",
+                     "SETT_",
+                     "CONF_"
+                     "LOGR_"
                     };
 const unsigned char heart [] PROGMEM = {
 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0C, 0x60, 0x1E, 0xF0, 0x3F, 0xF8, 0x7F, 0xFC, 0x7F, 0xFC,
