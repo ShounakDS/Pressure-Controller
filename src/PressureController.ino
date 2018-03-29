@@ -19,7 +19,7 @@ int count = 0;
 
 
 SYSTEM_MODE(MANUAL);
-STARTUP(bluetoothMode(AT));
+STARTUP(bluetoothMode(NORMAL));
 
 void setup() {
 
@@ -46,7 +46,7 @@ void setup() {
   tft.setCursor(0,0);
   tft.setTextWrap(LOW);
   Serial1.begin(9600);
-  Serial.begin(9600);
+  Serial.begin(115200);
   initMax7219();
   clearMax();
   Wire.begin();
@@ -96,7 +96,10 @@ void setup() {
   {
     WiFi.off();
   }
-
+  calAdc[0] = -4270;
+  calAdc[1] = 46531;
+  calDisp[0] = 0;
+  calDisp[1] = 1000;
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // loop() runs over and over again, as quickly as it can execute.
@@ -115,9 +118,14 @@ void loop()
 
  serialEvent();
  debugEvent();
-
+ rtcSec = Time.second() ;
  /////////////////////////////// Relay 1 //////////////////////////////////////
-
+    if( (rtcSec- rtcPrevSec) == scanTime){
+      if(dataLogStatus){
+        Datalog();
+      }
+      rtcPrevSec = rtcSec;
+    }
 
     if( seconds > prevSeconds)
     {
@@ -125,15 +133,14 @@ void loop()
         //displayMax(cyclicRotate(0x01),1);
         initMCP3424(0x68,3,3,0);    /// add, sr,pga,ch
         adcValue = MCP3421getLong(0x68,3); /// add sr
-        displayValue = mapf(adcValue,-4270,46531,0,100);
+        displayValue = mapf(adcValue,calAdc[0],calAdc[1],calDisp[0],calDisp[1]);
+        //displayValue = mapf(adcValue,-4270,46531,0,100);
         printValue = printOLED((long)displayValue,pvUnit,setScreen);
         checkRelayStatus(displayValue,&relay1,relay1Pin);
         checkRelayStatus(displayValue,&relay2,relay2Pin);
         checkRelayStatus(displayValue,&relay3,relay3Pin);
         checkRelayStatus(displayValue,&relay4,relay4Pin);
-        if(dataLogStatus){
-          Datalog();
-        }
+
         //////////////////////////////////////////////////////////////////////////////////////////////////////
         if(DEBUG_LIVE)
         {
@@ -181,7 +188,7 @@ void debugEvent()
   //////////////////////////////////////////////////////////////////////////////////////////////////////////
   if(Serial.available())
   {
-    inString = Serial.readString();
+    inString = Serial.readStringUntil('~');
   }
   ///////////////////////////////////RELAY///////////////////////////////////////
   if(inString.charAt(0) == 'r')
@@ -377,8 +384,7 @@ void debugEvent()
 
   }
 ///////////////////////////////////ABOUT///////////////////////////////////////
-  if(inString.charAt(0) == 'a' )
-  {
+  if(inString.charAt(0) == 'a' ){
     Serial.printlnf("System version: %s", System.version().c_str());
     Serial.print("Device ID : ");
     Serial.println(System.deviceID());
@@ -397,8 +403,13 @@ void debugEvent()
       Serial.println("Datalogging Stopped");
     }
   }
-
-
+  if(inString.charAt(0) == 'f'){
+    String fileName;
+    int length = inString.length();
+    fileName = inString.substring(2, length);
+    Serial.println(fileName);
+    readFile(fileName);
+  }
 ///////////////////////////////////ABOUT///////////////////////////////////////
 }
 
@@ -438,8 +449,8 @@ float screen1(long value,int unit)
     tft.setFont(ARIAL_36);
     if(unit == 0)
     {
-        var = value;
-        hex2bcd((int)var);
+        //var = value;
+        hex2bcd((int)value);
         tft.drawChar(0,30,thous,fgColor,bgColor,1);
         tft.drawChar(30,30,hunds,fgColor,bgColor,1);
         tft.drawChar(60,30,tens,fgColor,bgColor,1);
@@ -924,7 +935,8 @@ void readEEPROM()
     EEPROM.get(ADD_RLY4_UPPERDEL,relay4.upperDelay);
     EEPROM.get(ADD_RLY4_LOWERSET,relay4.lowerSet);
     EEPROM.get(ADD_RLY4_LOWERDEL,relay4.lowerDelay);
-
+    EEPROM.get(ADD_DATALOG_STS,dataLogStatus);
+    EEPROM.get(ADD_DATALOG_TIME,scanTime);
     wifiStatus = EEPROM.read(WIFI_STATUS);
 
     EEPROM.get(ADD_ADC_CAL_0,calAdc[0]);
@@ -972,7 +984,7 @@ void checkRelayStatus(long value,Relay* tempRelay,int relayPin)
 
 void serialEvent()
 {
-      String inString,tempString;
+      String tempString,inString,string1,string2,string3,string4;
       char tempChar;
       int tempInt;
       int index[10];
@@ -1003,10 +1015,10 @@ void serialEvent()
       if(inString.charAt(0) == 'L' )
       {
         Serial1.print("#");
-        Serial1.print(printValue);
+        Serial1.print((float)displayValue/10);
         Serial1.println("~");
         Serial.print("#");
-        Serial.print(printValue);
+        Serial.print((float)displayValue/10);
         Serial.println("~");
       }
       //////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1016,7 +1028,12 @@ void serialEvent()
         //// Mode, Unit, Image, Range High, Range low
         int length = inString.length();
         tempChar = inString.charAt(2);
-        mode = tempChar - 48;
+        if(mode != tempChar - 48)
+        {
+          mode = tempChar - 48;
+        }
+
+
         //EEPROM.put(ADD_MODE,mode);
 
         tempChar = inString.charAt(4);
@@ -1035,6 +1052,7 @@ void serialEvent()
 
         EEPROM.put(ADD_RANGEH,rangeHigh);
         EEPROM.put(ADD_RANGEL,rangeLow);
+        //SettingsChangelog("Mode ",String string2,String string3,String string4,String string5);
 
         tft.fillRect(0,0,128,128,BLACK);
 
@@ -1134,6 +1152,8 @@ void serialEvent()
         index[0] = tempString.indexOf(',');
         tempRelay[2] = tempString.substring(0, index[0]).toInt();
 
+
+
         /////////////////////////////////////   SECTOR 1   /////////////////////////////////////////////////////
         if(inString.charAt(1) == '1')
         {
@@ -1187,8 +1207,14 @@ void serialEvent()
       //Data Logger
       if(inString.charAt(0) == 'D' )
       {
-
-
+        int length = inString.length();
+        index[0] = inString.indexOf(',',2);
+        scanTime = inString.substring(2, index[0]).toInt();
+        EEPROM.put(ADD_DATALOG_TIME,scanTime);
+        Serial1.println(scanTime);
+        dataLogStatus = inString.substring(index[0]+1,length).toInt();
+        EEPROM.put(ADD_DATALOG_STS,dataLogStatus);
+        Serial1.println(dataLogStatus);
       }
       //////////////////////////////////////////////////////////////////////////////////////////////////////////
       //Calibration
@@ -1260,6 +1286,83 @@ void serialEvent()
         }
 
       }
+      //////////////////////////////////////////////////////////////////////////////////////////////////////////
+      //Device Caliberation
+      if(inString.charAt(0) == 'U' ){
+        char inputChar;
+        byte calFlag = 0;
+        tft.fillRect(0,0,128,128,BLACK);
+
+        tft.setTextWrap(HIGH);
+        tft.setFont(GLCDFONT);
+        tft.setCursor(0,0);
+        tft.println("Device Calibration");
+        while(1){
+          if(wifiStatus == 1){
+            Particle.process();
+          }
+          if(Serial1.available()){
+
+              inputChar = Serial1.read();
+
+              if(inputChar == 's'){
+                calFlag = 1;
+              }
+              if(inputChar == 'u'){
+                tft.fillRect(0,0,128,128,BLACK);
+                break;
+              }
+              if(calFlag == 0){
+                if(inputChar == 'C'){
+                  calAdc[0]+=100;
+                }
+                if(inputChar == 'f'){
+                  calAdc[0]+=10;
+                }
+                if(inputChar == 'c'){
+                  calAdc[0]-=100;
+                }
+                if(inputChar == 'F'){
+                  calAdc[0]-=10;
+                }
+              }// end calFlag == 0
+              if(calFlag == 1){
+                if(inputChar == 'C'){
+                  calAdc[1]+=100;
+                }
+                if(inputChar == 'f'){
+                  calAdc[1]+=10;
+                }
+                if(inputChar == 'c'){
+                  calAdc[1]-=100;
+                }
+                if(inputChar == 'F'){
+                  calAdc[1]-=10;
+                }
+              }// end calFlag == 1
+          }// end Serial available
+          tft.setFont(ARIAL_36);
+          initMCP3424(0x68,3,3,0);    /// add, sr,pga,ch
+          adcValue = MCP3421getLong(0x68,3); /// add sr
+          displayValue = mapf(adcValue,(float)calAdc[0],(float)calAdc[1],(float)calDisp[0],(float)calDisp[1]);
+          hex2bcd(displayValue);
+          tft.drawChar(0,30,thous,fgColor,bgColor,1);
+          tft.drawChar(30,30,hunds,fgColor,bgColor,1);
+          tft.drawChar(60,30,tens,fgColor,bgColor,1);
+          drawPoint(90,59,4,fgColor);
+          tft.drawChar(100,30,ones,fgColor,bgColor,1);
+
+        }//end while 1
+
+      }// end instring U
+      //////////////////////////////////////////////////////////////////////////////////////////////////////////
+      // Read File from Bluetooth
+      if(inString.charAt(0) == 'F'){
+        String fileName;
+        int length = inString.length();
+        fileName = inString.substring(2, length);
+        readFile(fileName);
+        }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1336,7 +1439,7 @@ void bluetoothMode(uint8_t modeSel)
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///  Bluetooth mode Selection
+///  DataLogging writes data to DATA_DDMMYYYY.txt file
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void Datalog(){
   char day[2],month[2];
@@ -1350,21 +1453,23 @@ void Datalog(){
   }
 
   if (!myFile.open(fileName, O_RDWR |O_AT_END)) {
-    Serial.print("No File with the name ");
-    Serial.print(fileName);
-    Serial.println(" found...");
     //sd.errorHalt("opening test.txt for write failed");
-    myFile.open(fileName, O_RDWR | O_CREAT | O_AT_END));
-    Serial.print("Creating File....");
-    Serial.println(fileName);
-    myFile.println("Date,Mode,Unit,Process Value,Relay 1,Relay 2,Relay 3,Relay 4");
-
-
+    myFile.open(fileName, O_RDWR | O_CREAT | O_AT_END);
+    myFile.println("Date,Time,Mode,Unit,Process Value,Relay 1,Relay 2,Relay 3,Relay 4");
   }
   // if the file opened okay, write to it:
-  Serial.print("Writing to");
-  Serial.println(fileName);
-  myFile.print(Time.timeStr());
+  //myFile.print(Time.timeStr());
+  myFile.print(Time.day());
+  myFile.print("-");
+  myFile.print(Time.month());
+  myFile.print("-");
+  myFile.print(Time.year());
+  myFile.print(",");
+  myFile.print(Time.hour());
+  myFile.print(":");
+  myFile.print(Time.minute());
+  myFile.print(":");
+  myFile.print(Time.second());
   myFile.print(",");
   myFile.print(modeNames[mode]);
   myFile.print(",");
@@ -1380,36 +1485,62 @@ void Datalog(){
   myFile.print(",");
   myFile.println(relay4.upperFlag);
   myFile.close();
-  Serial.println("done.");
-
 
 }
 
-uint8_t readFile(String fileName)
-{
-      // re-open the file for reading:
-    if (!myFile.open(fileName, O_READ)) {
-      Serial.println("Could not open the File");
-      sd.errorHalt("opening test.txt for read failed");
-      return 0;
-    }
-    Serial.println(fileName);
-    Serial.print(myFile.fileSize());
-    Serial.println("  Bytes");
-    Serial.println("  Content:");
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///  DataLogging changed setting values to SChangeLog.txt
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/*void SettingsChangelog(String string1,String string2,String string3,String string4,String string5){
+  char day[2],month[2];
+  if (!sd.begin(chipSelect, SPI_HALF_SPEED)) {
+    sd.initErrorHalt();
+  }
 
-    // read from the file until there's nothing else in it:
-    int data;
-    while ((data = myFile.read()) >= 0) {
-      Serial.write(data);
+  if (!myFile.open("SChangeLog.txt", O_RDWR |O_AT_END)) {
+    //sd.errorHalt("opening test.txt for write failed");
+    myFile.open("SChangeLog.txt", O_RDWR | O_CREAT | O_AT_END);
+  }
+  // if the file opened okay, write to it:
+  myFile.println("--------------------------------------------------------------------");
+  myFile.println(Time.timeStr());
+  myFile.print(" Settings changed : ");
+  myFile.println(string1);
+  myFile.println(string2);
+  myFile.println(string3);
+  myFile.println(string4);
+  myFile.println(string5);
+  myFile.close();
+}*/
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///  Read file from SD card
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+void readFile(String fileName){
+  // re-open the file for reading:
+  if (!sd.begin(chipSelect, SPI_HALF_SPEED)) {
+    sd.initErrorHalt();
     }
+    if (!myFile.open(fileName, O_RDWR |O_AT_END)) {
 
-    // close the file:
-    myFile.close();
+    }
+  myFile.close();
+  if (!myFile.open(fileName, O_READ)) {
+    sd.errorHalt("opening file for read failed");
+    return;
+    }
+  long filesize = myFile.fileSize();
+  // read from the file until there's nothing else in it:
+
+  while (filesize !=0) {
+    char readChar = myFile.read();
+    Serial1.write(readChar);
+    Serial.write(readChar);
+    filesize--;
+    }
+  // close the file:
+  myFile.close();
+  return;
 }
-
-
-
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Interrupts
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
