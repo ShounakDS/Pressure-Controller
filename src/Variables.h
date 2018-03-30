@@ -236,7 +236,7 @@ uint8_t setScreen = 0;
 String WifiSSID,WifiPASS;
 uint8_t wifiStatus = 0;
 uint8_t rtcSec,rtcPrevSec;
-
+int count = 0;
 uint16_t colorValues[4] = {0x07E0,0xFFE0,0xFB20, 0xF800}; //GREEN,YELLOW,ORANGE,RED
 //////////////////////  String Declarations     /////////////////////////////////
 
