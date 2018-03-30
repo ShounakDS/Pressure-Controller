@@ -20,9 +20,14 @@ int count = 0;
 
 SYSTEM_MODE(MANUAL);
 STARTUP(bluetoothMode(NORMAL));
+STARTUP(System.enableFeature(FEATURE_RESET_INFO));
+// reset the system after 60 seconds if the application is unresponsive
+ApplicationWatchdog wd(60000, System.reset);
+
 
 void setup() {
-
+  resetLog();
+  System.on(all_events, handle_all_the_events);
   Time.zone(+5.5);
   // Put initialization like pinMode and begin functions here.
     ////////////////////////////////    Pin Declarations   /////////////////////////////////////////////////////
@@ -114,7 +119,7 @@ void loop()
       Particle.process();
     }
   }
-
+  Particle.process();
 
  serialEvent();
  debugEvent();
@@ -169,7 +174,7 @@ void loop()
         } ///// END DEBUG_LIVE
         prevSeconds = seconds;
     }
-
+ wd.checkin(); // resets the AWDT count
 }
 
 
@@ -1204,6 +1209,11 @@ void serialEvent()
 
       }
       //////////////////////////////////////////////////////////////////////////////////////////////////////////
+      //Time
+      if(inString.charAt(0) == 't' ){
+        Serial1.println(Time.timeStr());
+      }
+      //////////////////////////////////////////////////////////////////////////////////////////////////////////
       //Data Logger
       if(inString.charAt(0) == 'D' )
       {
@@ -1475,7 +1485,7 @@ void Datalog(){
   myFile.print(",");
   myFile.print(unitNames[pvUnit]);
   myFile.print(",");
-  myFile.print(printValue);
+  myFile.print((float)displayValue/10);
   myFile.print(",");
   myFile.print(relay1.upperFlag);
   myFile.print(",");
@@ -1487,7 +1497,223 @@ void Datalog(){
   myFile.close();
 
 }
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///  Reset File Logging. Log after every Reset
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+void resetLog(){
+  String fileName = "ResetLog.txt";
+  String reason;
+  if (System.resetReason() == RESET_REASON_USER)
+  {
+    reason = "Reset button";
+  }
+  if (System.resetReason() == RESET_REASON_POWER_MANAGEMENT)
+  {
+    reason = "Low-power management reset";
+  }
+  if (System.resetReason() == RESET_REASON_POWER_DOWN)
+  {
+    reason = "Power-down reset";
+  }
+  if (System.resetReason() == RESET_REASON_POWER_BROWNOUT)
+  {
+    reason = "Brownout reset";
+  }
+  if (System.resetReason() == RESET_REASON_WATCHDOG)
+  {
+    reason = "Hardware watchdog reset";
+  }
+  if (System.resetReason() == RESET_REASON_UPDATE)
+  {
+    reason = "Successful firmware update";
+  }
+  if (System.resetReason() == RESET_REASON_UPDATE_TIMEOUT)
+  {
+    reason = "Firmware update timeout";
+  }
+  if (System.resetReason() == RESET_REASON_FACTORY_RESET)
+  {
+    reason = "Factory reset requested";
+  }
+  if (System.resetReason() == RESET_REASON_SAFE_MODE)
+  {
+    reason = " Safe mode requested";
+  }
+  if (System.resetReason() == RESET_REASON_DFU_MODE)
+  {
+    reason = "DFU mode requested";
+  }
+  if (System.resetReason() == RESET_REASON_PANIC)
+  {
+    reason = "System panic";
+  }
+  if (System.resetReason() == RESET_REASON_USER)
+  {
+    reason = "User-requested reset";
+  }
+  if (System.resetReason() == RESET_REASON_UNKNOWN)
+  {
+    reason = "Unspecified reset reason";
+  }
+  if (System.resetReason() == RESET_REASON_NONE)
+  {
+    reason = "Information is not available";
+  }
+  if (!sd.begin(chipSelect, SPI_HALF_SPEED)) {
+    sd.initErrorHalt();
+  }
+  if (!myFile.open(fileName, O_RDWR |O_AT_END)) {
+    //sd.errorHalt("opening test.txt for write failed");
+    myFile.open(fileName, O_RDWR | O_CREAT | O_AT_END);
+    myFile.println("Reset Log File : Pressure Controller Version ");
+    myFile.println("----------------------------------------------");
+  }
+  // if the file opened okay, write to it:
+  myFile.print(Time.timeStr());
+  myFile.print("  ---  ");
+  myFile.print("Previous reset reason - ");
+  myFile.print("reason");
+  myFile.close();
 
+}
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///  Event Handler Save events to SD Card
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+void handle_all_the_events(system_event_t event, int param, void*)
+{
+  String fileName;
+  int e = event;
+  int p = param;
+  String eventDesc,paramDesc;
+  if(e == 2){
+    eventDesc = "Device has entered setup mode";
+    paramDesc = " ";
+  }
+  if(e == 4){
+    eventDesc = "The device is still in setup mode - ";
+    paramDesc = "since " + String(p) + "ms";
+  }
+  if(e == 8){
+    eventDesc = "Setup mode was exited";
+    paramDesc = "since " + String(p) + "ms";
+  }
+  if(e == 16){
+    eventDesc = "Network credentials were - ";
+    if(p == 0){
+      paramDesc = "Added";
+    }
+    if(p == 1){
+      paramDesc = "Cleared";
+    }
+  }
+  if(e ==32){
+    eventDesc = "Network connection status - ";
+    if(p == 4){
+      paramDesc = "Powering On";
+    }
+    if(p == 5){
+      paramDesc = "On";
+    }
+    if(p == 6){
+      paramDesc = "Connecting";
+    }
+    if(p == 7){
+      paramDesc = "Connected";
+    }
+    if(p == 10){
+      paramDesc = "Powering Off";
+    }
+    if(p == 11){
+      paramDesc = "Off";
+    }
+  }
+  if(e == 64){
+    eventDesc = "Cloud connection status - ";
+    if(p == 0){
+      paramDesc = "Disconnected";
+    }
+    if(p == 1){
+      paramDesc = "Connecting";
+    }
+    if(p == 8){
+      paramDesc = "Connected";
+    }
+    if(p == 9){
+      paramDesc = "Disconnecting";
+    }
+  }
+  if(e == 128){
+    eventDesc = "Button pressed for ";
+    paramDesc = String(p) + "ms";
+
+  }
+  if(e == 256){
+    eventDesc = "Firmware update status - ";
+    if(p == 0){
+      paramDesc = "Beginning";
+    }
+    if(p == 1){
+      paramDesc = "Complete";
+    }
+    if(p == 2){
+      paramDesc = "In Progress";
+    }
+    if(p == 3){
+      paramDesc = "Failed";
+    }
+  }
+  if(e == 512){
+    eventDesc = "Firmware update is available";
+    paramDesc = " ";
+  }
+  if(e == 1024){
+    eventDesc = "The system would like to reset";
+    paramDesc = " ";
+  }
+  if(e == 2048){
+    eventDesc = "System will reset once the application has completed handling this event";
+    paramDesc = " ";
+  }
+  if(e == 4096){
+    eventDesc = "Setup button is clicked - ";
+    paramDesc = String(p) + "times";
+  }
+  if(e == 8192){
+    eventDesc = "Setup button is clicked - ";
+    paramDesc = String(p) + "times";
+  }
+  if(e == 16384){
+    eventDesc = "Device time changed - ";
+    if(p == 0){
+      paramDesc = "Manually";
+    }
+    if(p == 1){
+      paramDesc = "Synch";
+    }
+  }
+  if(e == 32768){
+    eventDesc = "Low Battery"; "";
+    paramDesc = "";
+  }
+  fileName = "EventLog.txt";
+  if (!sd.begin(chipSelect, SPI_HALF_SPEED)) {
+    sd.initErrorHalt();
+  }
+  if (!myFile.open(fileName, O_RDWR |O_AT_END)) {
+    //sd.errorHalt("opening test.txt for write failed");
+    myFile.open(fileName, O_RDWR | O_CREAT | O_AT_END);
+    myFile.println("Event Log File : Pressure Controller Version ");
+    myFile.println("----------------------------------------------");
+  }
+  // if the file opened okay, write to it:
+  myFile.print(Time.timeStr());
+  myFile.print("  ---  ");
+  myFile.print(" Event :  ");
+  myFile.print(eventDesc);
+  myFile.println(paramDesc);
+  myFile.close();
+
+}
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///  DataLogging changed setting values to SChangeLog.txt
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1541,6 +1767,8 @@ void readFile(String fileName){
   myFile.close();
   return;
 }
+
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Interrupts
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
