@@ -83,9 +83,8 @@
 #define ADD_OUTCALS           69
 
 #define ADD_SCAN_TIME         70
-
 #define ADD_DATALOG_STS       71
-#define ADD_DATALOG_TIME     72
+#define ADD_DATALOG_TIME        72
 
 #define ADD_TAGNO           73
 
@@ -155,6 +154,7 @@ IntervalTimer myTimer;
 
 
 typedef struct Relay {
+  String relayName;
   uint16_t lowerSet;
   uint16_t lowerDelay;
   uint16_t upperSet;
@@ -201,9 +201,9 @@ uint8_t inc,next,tempNext;
 uint8_t pvUnit,mode = 0;
 Relay relay1,relay2,relay3,relay4;
 Sector sector1,sector2,sector3,sector4;
-uint8_t dataLogStatus = 0,dispScroll  = 0;
-uint8_t  scanTime,scrollTime;
-
+uint8_t dataLogStatus = 0,dispScroll  = 1;
+uint8_t  scanTime,scrollTime = 10;
+boolean  heartFlag = 0;
 
 
 uint8_t DEBUG_LIVE=0;
@@ -221,7 +221,7 @@ char charPos1[8] = {0,15,45,60,90,105};
 char charPos2[8] = {0,15,30,45,60,75,90,105};
 char charPos3[8] = {20,35,50,80};
 uint8_t colon = 0;
-unsigned char dispNow = 0;
+uint8_t dispNow = 0;
 uint16_t sensorValue = 0;  // variable to store the value coming from the sensor
 float printValue;
 volatile unsigned int setRelay,setDelay;
@@ -321,8 +321,10 @@ const unsigned char heart [] PROGMEM = {
 };
 
 const unsigned char smallHeart [] PROGMEM = {
-0xEE, 0xFF, 0xFF, 0xFF, 0xFE, 0x7E, 0x3C, 0x18,
-};
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1C, 0x70, 0x3E, 0xF8,
+  0x3F, 0xF8, 0x1F, 0xF0, 0x0F, 0xE0, 0x07, 0xC0, 0x03, 0x80, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00
+  };
+
 const unsigned char bluetooth [] PROGMEM = {
 0x01, 0xC0, 0x01, 0xE0, 0x01, 0x30, 0x11, 0x18, 0x19, 0x18, 0x0D, 0x30, 0x07, 0x60, 0x03, 0xC0,
 0x03, 0xC0, 0x07, 0x60, 0x0D, 0x30, 0x19, 0x18, 0x11, 0x18, 0x01, 0x30, 0x01, 0xE0, 0x01, 0xC0
