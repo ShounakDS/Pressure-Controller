@@ -18,14 +18,15 @@
 SYSTEM_MODE(MANUAL);
 // Startup Functions
 STARTUP(bluetoothMode(NORMAL));
-STARTUP(WiFi.selectAntenna(ANT_EXTERNAL)); // selects the u.FL antenna
+STARTUP(WiFi.selectAntenna(ANT_INTERNAL)); // selects the u.FL antenna
 STARTUP(System.enableFeature(FEATURE_RESET_INFO));
 // reset the system after 60 seconds if the application is unresponsive
 ApplicationWatchdog wd(60000, System.reset);
 
+
 /// Set up Function
 void setup() {
-  readEEPROM();
+//  readEEPROM();
   if(wifiStatus){
     WiFi.on();
     WiFi.connect();
@@ -34,7 +35,7 @@ void setup() {
   else{
     WiFi.off();
   }
-  resetLog();
+  //resetLog();
   System.on(all_events, handle_all_the_events);
   Time.zone(+5.5);
   // Put initialization like pinMode and begin functions here.
@@ -81,7 +82,6 @@ void setup() {
   relay2.relayName = "R2";
   relay3.relayName = "R3";
   relay4.relayName = "R4";
-
 /////////////////////////////   Serial Debug Initializing  //////////////////////////////////////
  serialDebugInit();
  /////////////////////////////   EEPROM Address Read     ////////////////////////////////////////
@@ -95,9 +95,13 @@ void setup() {
 void loop(){
   // The core of your code will likely live here.
   if(wifiStatus){
+    tft.drawBitmap(80, 110, wifi, 24, 24,WHITE);
     if(Particle.connected){
       Particle.process();
     }
+  }
+  else{
+      tft.drawBitmap(80, 110, wifi, 24, 24,BLACK);
   }
   Particle.process();
   bluetoothEvent();
@@ -329,8 +333,52 @@ float screen3(long value,int unit){
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// Screen 4
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-float screen4(){
-
+void screen4(long value,int unit){
+  float var;
+  tft.setFont(ARIAL_36);
+  if(unit == 0){
+      var = value;
+      hex2bcd((int)value);
+      tft.drawChar(0,30,thous,fgColor,bgColor,1);
+      tft.drawChar(30,30,hunds,fgColor,bgColor,1);
+      tft.drawChar(60,30,tens,fgColor,bgColor,1);
+      drawPoint(90,59,4,fgColor);
+      tft.drawChar(100,30,ones,fgColor,bgColor,1);///Print for BAR
+  }
+  if(unit == 1){
+      var = (value*1.4503827640391);
+      hex2bcd((int)var);
+      tft.drawChar(0,30,thous,fgColor,bgColor,1);
+      tft.drawChar(33,30,hunds,fgColor,bgColor,1);
+      tft.drawChar(66,30,tens,fgColor,bgColor,1);
+      tft.drawChar(99,30,ones,fgColor,bgColor,1);///Print for PSI
+  }
+  if(unit == 2){
+      var = (value * 1.01972);
+      hex2bcd((int)var);
+      tft.drawChar(0,30,thous,fgColor,bgColor,1);
+      tft.drawChar(30,30,hunds,fgColor,bgColor,1);
+      tft.drawChar(60,30,tens,fgColor,bgColor,1);
+      drawPoint(90,59,4,fgColor);
+      tft.drawChar(100,30,ones,fgColor,bgColor,1);///Print for Kg/cm2
+  }
+  if(unit == 3){
+      var = value * 0.1;
+      hex2bcd((int)var);
+      tft.drawChar(0,30,thous,fgColor,bgColor,1);
+      tft.drawChar(30,30,hunds,fgColor,bgColor,1);
+      tft.drawChar(60,30,tens,fgColor,bgColor,1);
+      drawPoint(90,59,4,fgColor);
+      tft.drawChar(100,30,ones,fgColor,bgColor,1);///Print for MPa
+  }
+ tft.drawFastHLine(0,75,128,selColor);
+ tft.drawFastHLine(0,76,128,selColor);
+ tft.setFont(ARIAL_8);
+ tft.setCursor(50,85);
+ tft.setTextColor(WHITE);
+ tft.print(unitNames[unit]);
+ tft.fillRect(0,0,128,20,printSector(var));
+ heartFunction();
 
 }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1025,10 +1073,11 @@ void bluetoothEvent(){
     }
     tempInt = tempString.substring(index[1]+1,length).toInt();
     if(wifiStatus != tempInt){
-      settingsChangeLog("Data Log Status ",positionNames[wifiStatus] ,positionNames[tempInt]);
+      settingsChangeLog("Wifi Status ",positionNames[wifiStatus] ,positionNames[tempInt]);
     }
     wifiStatus = tempInt;
     EEPROM.write(WIFI_STATUS,wifiStatus);
+    WiFi.setCredentials(WifiSSID,WifiPASS);
     if(wifiStatus){
       WiFi.on();
       WiFi.connect();
@@ -1300,6 +1349,19 @@ void debugEvent(){
   }
 ///////////////////////////////////ABOUT///////////////////////////////////////
   if(inString.charAt(0) == 'a' ){
+    String testString;
+    EEPROM.get(ADD_KUSRNO,testString);
+    Serial.print("Serial No : ");
+    Serial.println(testString);
+    EEPROM.get(ADD_KUBATCHNO,testString);
+    Serial.print("Batch No : ");
+    Serial.println(testString);
+    EEPROM.get(ADD_MODEL,testString);
+    Serial.print("Model No : ");
+    Serial.println(testString);
+    EEPROM.get(ADD_FIRMWARE,testString);
+    Serial.print("Firmware Version : ");
+    Serial.println(testString);
     Serial.printlnf("System version: %s", System.version().c_str());
     Serial.print("Device ID : ");
     Serial.println(System.deviceID());
@@ -1344,6 +1406,7 @@ void Datalog(){
   fileName = "DATA_" + String(day) + String(month) + String(Time.year()) + ".txt";
   if (!sd.begin(chipSelect, SPI_HALF_SPEED)){
     sd.initErrorHalt();
+    return;
   }
   if (!myFile.open(fileName, O_RDWR |O_AT_END)) {
     myFile.open(fileName, O_RDWR | O_CREAT | O_AT_END);
@@ -1427,6 +1490,7 @@ void resetLog(){
   }
   if (!sd.begin(chipSelect, SPI_HALF_SPEED)){
     sd.initErrorHalt();
+    return;
   }
   if (!myFile.open(fileName, O_RDWR |O_AT_END)){
     myFile.open(fileName, O_RDWR | O_CREAT | O_AT_END);
@@ -1573,6 +1637,7 @@ void handle_all_the_events(system_event_t event, int param, void*)
   fileName = "EventLog.txt";
   if (!sd.begin(chipSelect, SPI_HALF_SPEED)){
     sd.initErrorHalt();
+    return;
   }
   if (!myFile.open(fileName, O_RDWR |O_AT_END)){
     myFile.open(fileName, O_RDWR | O_CREAT | O_AT_END);
@@ -1604,6 +1669,7 @@ void handle_all_the_events(system_event_t event, int param, void*)
 void settingsChangeLog(String setting,String prevValue,String currValue){
   if (!sd.begin(chipSelect, SPI_HALF_SPEED)){
     sd.initErrorHalt();
+    return;
   }
   if (!myFile.open("SettingChangeLog.txt", O_RDWR |O_AT_END)) {
     myFile.open("SettingChangeLog.txt", O_RDWR | O_CREAT | O_AT_END);
@@ -1638,6 +1704,7 @@ void readFile(String fileName){
   // re-open the file for reading:
   if (!sd.begin(chipSelect, SPI_HALF_SPEED)){
     sd.initErrorHalt();
+    return;
     }
     if (!myFile.open(fileName, O_RDWR |O_AT_END)) {
     }
