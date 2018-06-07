@@ -17,16 +17,22 @@
 /// System Mode functions
 SYSTEM_MODE(MANUAL);
 // Startup Functions
-STARTUP(bluetoothMode(NORMAL));
-STARTUP(WiFi.selectAntenna(ANT_INTERNAL)); // selects the u.FL antenna
+
+STARTUP(WiFi.selectAntenna(ANT_EXTERNAL)); // selects the u.FL antenna
 STARTUP(System.enableFeature(FEATURE_RESET_INFO));
 // reset the system after 60 seconds if the application is unresponsive
-ApplicationWatchdog wd(60000, System.reset);
+ApplicationWatchdog wd(10000, System.reset);
 
 
 /// Set up Function
 void setup() {
-//  readEEPROM();
+  tft.begin();
+  tft.fillRect(0,0,128,128,BLACK);
+  tft.setCursor(0,0);
+  tft.setTextWrap(LOW);
+  readEEPROM();
+  printValue = printOLED(0,pvUnit,setScreen);
+  bluetoothCon();
   if(wifiStatus){
     WiFi.on();
     WiFi.connect();
@@ -35,7 +41,7 @@ void setup() {
   else{
     WiFi.off();
   }
-  //resetLog();
+  resetLog();
   System.on(all_events, handle_all_the_events);
   Time.zone(+5.5);
   // Put initialization like pinMode and begin functions here.
@@ -52,21 +58,17 @@ void setup() {
 
 /////////////////////////////   Initializing Peripherals  //////////////////////////////////////////////////
   myTimer.begin(timerISR, 2000, hmSec);
-  tft.begin();
-  tft.fillRect(0,0,128,128,BLACK);
-  tft.setCursor(0,0);
-  tft.setTextWrap(LOW);
   Serial1.begin(9600);
   Serial.begin(115200);
-  initMax7219();
-  clearMax();
   Wire.begin();
   initMCP3424(0x68,0,3,0);    /// add, sr,pga,ch
+  delay(1000);
+  displayBargraph(0);
 /////////////////////////////   Initializing Variables  ////////////////////////////////////////
   color = GREEN;
   fgColor = WHITE;
   bgColor = BLACK;
-  selColor = YELLOW;
+  selColor = CYAN;
   clockColor = YELLOW;
   //displayValue = 6000;
   //calAdc[0] = -900;
@@ -85,29 +87,33 @@ void setup() {
 /////////////////////////////   Serial Debug Initializing  //////////////////////////////////////
  serialDebugInit();
  /////////////////////////////   EEPROM Address Read     ////////////////////////////////////////
-
   /////////////////////////////   Wifi Status    ////////////////////////////////////////////////
 
 }
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // loop() runs over and over again, as quickly as it can execute.
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void loop(){
+  wd.checkin();
   // The core of your code will likely live here.
-  if(wifiStatus){
-    tft.drawBitmap(80, 110, wifi, 24, 24,WHITE);
-    if(Particle.connected){
-      Particle.process();
+  while(menuState == LOW){
+    wd.checkin();
+    if(wifiStatus){
+      tft.drawBitmap(80, 110, wifi, 24, 24,WHITE);
+      if(Particle.connected){
+        Particle.process();
+      }
     }
-  }
-  else{
-      tft.drawBitmap(80, 110, wifi, 24, 24,BLACK);
-  }
-  Particle.process();
-  bluetoothEvent();
-  debugEvent();
-  rtcSec = Time.second() ;
- /////////////////////////////// Relay 1 //////////////////////////////////////
+    else{
+        tft.drawBitmap(80, 110, wifi, 24, 24,BLACK);
+    }
+    Particle.process();
+    bluetoothCon();
+    bluetoothEvent();
+    debugEvent();
+    rtcSec = Time.second() ;
+   /////////////////////////////// Relay 1 //////////////////////////////////////
     if( (rtcSec- rtcPrevSec) == scanTime){
       if(dataLogStatus){
         Datalog();
@@ -115,44 +121,2106 @@ void loop(){
       rtcPrevSec = rtcSec;
     }
     if( seconds > prevSeconds){
-    //displayBargraph(count);
-    //displayMax(cyclicRotate(0x01),1);
-    initMCP3424(0x68,3,1,0);    /// add, sr,pga,ch
-    adcValue = MCP3421getLong(0x68,3); /// add sr
-    displayValue = mapf(adcValue,calAdc[0],calAdc[1],calDisp[0],calDisp[1]);
-    //displayValue = mapf(adcValue,-900,66600,0,100);
-    printValue = printOLED((long)displayValue,pvUnit,setScreen);
-    Particle.publish("Pressure",String(displayValue/10,1));
-    checkRelayStatus(displayValue,&relay1,relay1Pin);
-    checkRelayStatus(displayValue,&relay2,relay2Pin);
-    checkRelayStatus(displayValue,&relay3,relay3Pin);
-    checkRelayStatus(displayValue,&relay4,relay4Pin);
-    //////////////////////////////////////////////////////////////////////////////////////////////////////
-    if(DEBUG_LIVE){
-      Serial.print(modeNames[mode]);
-      Serial.print("\t");
-      Serial.print(unitNames[pvUnit]);
-      Serial.print("\t\t");
-      Serial.print(adcValue);
-      Serial.print("\t\t\t");
-      Serial.print(printValue);
-      Serial.print("\t\t");
-      Serial.print(relay1.upperFlag);
-      Serial.print("\t\t");
-      Serial.print(relay2.upperFlag);
-      Serial.print("\t\t");
-      Serial.print(relay3.upperFlag);
-      Serial.print("\t\t");
-      Serial.println(relay4.upperFlag);
-    } ///// END DEBUG_LIVE
-    prevSeconds = seconds;
+      initMCP3424(0x68,3,1,0);    /// add, sr,pga,ch
+      adcValue = MCP3421getLong(0x68,3); /// add sr
+      Serial1.println(adcValue);
+      displayValue = mapf(adcValue,1150/*calAdc[0]*/,61228/*calAdc[1]*/,0,100); //displayValue = mapf(adcValue,-900,66600,0,100);
+      bargraphValue = mapf(displayValue,0,100,0,50);
+      displayBargraph(bargraphValue);
+      if(checkKeypress() == ENTER){
+          delay(500);
+          if(menuState == LOW){
+            menuState = HIGH;
+          }
+          else if(menuState == HIGH){
+            menuState = LOW;
+          }
+       }
+      //displayBargraph(seconds);
+      printValue = printOLED(displayValue,pvUnit,setScreen);
+      Particle.publish("Pressure",String(displayValue/10,1));
+      checkRelayStatus(displayValue,&relay1,relay1Pin);
+      checkRelayStatus(displayValue,&relay2,relay2Pin);
+      checkRelayStatus(displayValue,&relay3,relay3Pin);
+      checkRelayStatus(displayValue,&relay4,relay4Pin);
+      //////////////////////////////////////////////////////////////////////////////////////////////////////
+      if(DEBUG_LIVE){
+        Serial.print(modeNames[mode]);
+        Serial.print("\t");
+        Serial.print(unitNames[pvUnit]);
+        Serial.print("\t\t");
+        Serial.print(adcValue);
+        Serial.print("\t\t\t");
+        Serial.print(printValue);
+        Serial.print("\t\t");
+        Serial.print(relay1.upperFlag);
+        Serial.print("\t\t");
+        Serial.print(relay2.upperFlag);
+        Serial.print("\t\t");
+        Serial.print(relay3.upperFlag);
+        Serial.print("\t\t");
+        Serial.println(relay4.upperFlag);
+      } ///// END DEBUG_LIVE
+      prevSeconds = seconds;
+    }/// End seconds if Loop
+  }
+  tft.fillRect(0, 0, 128, 128, bgColor);
+  menuFlagL = LOW;
+  menuFlagH = LOW;
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  ///Menu State High. OLED diplays menu Screen
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  while(menuState == HIGH){
+    tft.fillRect(0, 0, 128, 128, bgColor);
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  /////   Next = 0   First Menu Display
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    while( (menuState == HIGH) && (next == 0)){
+      wd.checkin();
+      if(Particle.connected){
+        Particle.process();
+      }
+      tft.setFont(ARIAL_8);
+      tft.setTextColor(fgColor);
+      tft.setTextSize(1);
+      tft.setCursor(0, 0);
+      tft.print("M E N U");
+      tft.drawLine(0,13,128,13,fgColor);
+      if(menuFlagH == LOW){
+        /// Display list with Selected String
+        // variables passed : FONT,Display List,Selected Item, max values in string,Selection Color,Foreground Color, BackGround Color
+        selectMenuString(ARIAL_8,menuNames,inc0,7,selColor,fgColor,bgColor);
+        menuFlagH = HIGH;
+      }
+      //wd.checkin();
+      ///////////////////////   Button Read Condition   ///////////////////////////
+      if(checkKeypress() == DOWN){
+        delay(400);
+         inc0++;
+         menuFlagH = LOW;
+         if(inc0 > 6){
+           inc0 = 6;
+         }
+      }
+      if(checkKeypress() == UP){
+         delay(400);
+         inc0--;
+         menuFlagH = LOW;
+         if(inc0 < 0){
+           inc0 = 0;
+         }
+      }
+      if(checkKeypress() == RIGHT){
+         delay(400);
+         next++;
+         menuFlagH = LOW;
+         if(next == 5){
+           next = 0;
+         }
+      }
+      if(checkKeypress() == LEFT){
+          delay(400);
+          inc0 = 0;
+          if(menuState == LOW){
+            menuState = HIGH;
+          }
+          else if(menuState == HIGH){
+            menuState = LOW;
+          }
+       }
+      /////////////////////////////////////////////////////////////////////////////////
+    }//// while next = 0
+   ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+   // resets the AWDT count
+    tft.fillRect(0, 0, 128, 128, bgColor);
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /////   Next = 1    go one step inside the menu
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    while((menuState == HIGH) && (next == 1)){
+      wd.checkin();
+      tft.setFont(ARIAL_8);
+      tft.setTextColor(fgColor,bgColor);
+      tft.setTextSize(1);
+      tft.setCursor(0,0);
+      tft.print(menuNames[inc0]);
+      tft.drawLine(0,13,128,13,fgColor);
+      /////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      //   INC  =
+      while(inc0 == 0)    {
+        wd.checkin();
+        if(Particle.connected){
+          Particle.process();
+        }
+        if(menuFlagH == LOW){
+          selectMenuString(ARIAL_8,modeNames,inc1,2,selColor,fgColor,bgColor);
+          menuFlagH = HIGH;
+         }
+         ///////////////////////   Button Read Condition   ///////////////////////////
+         if(checkKeypress() == DOWN){
+           delay(400);
+            inc1++;
+            menuFlagH = LOW;
+            if(inc1 > 1){
+              inc1 = 1;
+            }
+         }
+         if(checkKeypress() == UP){
+            delay(400);
+            inc1--;
+            menuFlagH = LOW;
+            if(inc1 <= 0){
+              inc1 = 0;
+            }
+         }
+         if(checkKeypress() == LEFT){
+            delay(400);
+            next--;
+            menuFlagH = LOW;
+            if(next < 0){
+              next = 0;
+            }
+            break;
+         }
+         if(checkKeypress() == RIGHT){
+            delay(400);
+            next++;
+            menuFlagH = LOW;
+            if(next == 5){
+              next = 0;
+            }
+            break;
+         }
+      }/// while inc0 == 0
+      ////////////////////////////////////////////////////////////////////////////////////////////////////////
+      ////////   INC  = 1  Displays Relay names
+      while(inc0 == 1)
+      {
+        wd.checkin();
+        if(Particle.connected){
+          Particle.process();
+        }
+        if(menuFlagH == LOW){
+          selectMenuString(ARIAL_8,relayNames,inc1,4,selColor,fgColor,bgColor);
+          menuFlagH = HIGH;
+         }
+        ///////////////////////   Button Read Condition   ///////////////////////////
+        if(checkKeypress() == DOWN){
+          delay(400);
+           inc1++;
+           menuFlagH = LOW;
+           if(inc1 > 3){
+             inc1 = 3;
+           }
+        }
+        if(checkKeypress() == UP){
+           delay(400);
+           inc1--;
+           menuFlagH = LOW;
+           if(inc1 <= 0){
+             inc1 = 0;
+           }
+        }
+        if(checkKeypress() == RIGHT){
+           delay(400);
+           next++;
+           menuFlagH = LOW;
+           if(next == 5){
+             next = 0;
+           }
+           break;
+        }
+        if(checkKeypress() == LEFT){
+           delay(400);
+           next--;
+           inc1 = 0;
+           menuFlagH = LOW;
+           if(next == 5){
+             next = 0;
+           }
+           break;
+        }
+      }/// while inc0 == 1
+      ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+      ///////   INC  = 2 Displays sector Names
+      while(inc0 == 2)
+      {
+        wd.checkin();
+        if(Particle.connected){
+          Particle.process();
+        }
+         if(menuFlagH == LOW){
+          selectMenuString(ARIAL_8,sectorNames,inc1,4,selColor,fgColor,bgColor);
+          menuFlagH = HIGH;
+         }
+        ///////////////////////   Button Read Condition   ///////////////////////////
+        if(checkKeypress() == DOWN){
+          delay(400);
+           inc1++;
+           menuFlagH = LOW;
+           if(inc1 > 3){
+             inc1 = 3;
+           }
+        }
+        if(checkKeypress() == UP){
+           delay(400);
+           inc1--;
+           menuFlagH = LOW;
+           if(inc1 <= 0){
+             inc1 = 0;
+           }
+        }
+        if(checkKeypress() == RIGHT){
+           delay(400);
+           next++;
+           menuFlagH = LOW;
+           if(next == 5){
+             next = 0;
+           }
+           break;
+        }
+        if(checkKeypress() == LEFT){
+           delay(400);
+           next--;
+           menuFlagH = LOW;
+           if(next == 5){
+             next = 0;
+           }
+           inc1 = 0;
+           break;
+        }
+      }/// while inc0 == 2
+      ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+      ///////   INC  = 3 Diplays Transmitter Menu inside
+      while(inc0 == 3)
+      {
+        wd.checkin();
+        if(Particle.connected){
+          Particle.process();
+        }
+        if(menuFlagH == LOW){
+          selectMenuString(ARIAL_8,outputNames,inc1,2,selColor,fgColor,bgColor);
+          menuFlagH = HIGH;
+         }
+        ///////////////////////   Button Read Condition   ///////////////////////////
+        if(checkKeypress() == DOWN){
+          delay(400);
+           inc1++;
+           menuFlagH = LOW;
+           if(inc1 > 1){
+             inc1 = 1;
+           }
+        }
+        if(checkKeypress() == UP){
+           delay(400);
+           inc1--;
+           menuFlagH = LOW;
+           if(inc1 <= 0){
+             inc1 = 0;
+           }
+        }
+        if(checkKeypress() == RIGHT){
+           delay(400);
+           next++;
+           menuFlagH = LOW;
+           if(next == 5){
+             next = 0;
+           }
+           break;
+        }
+        if(checkKeypress() == LEFT){
+           delay(400);
+           next--;
+           menuFlagH = LOW;
+           if(next == 5){
+             next = 0;
+           }
+           inc1 = 0;
+           break;
+        }
+      }/// while inc0 == 3
+      ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+      ///////   INC  = 4
+      //////  Diplays date and time
+      while(inc0 == 4)
+      {
+        wd.checkin();
+        if(Particle.connected){
+          Particle.process();
+        }
+        if(menuFlagH == LOW){
+        selectMenuString(ARIAL_8,timeNames,inc1,2,selColor,fgColor,bgColor);
+        menuFlagH = HIGH;
+        }
+        ///////////////////////   Button Read Condition   ///////////////////////////
+        if(checkKeypress() == DOWN){
+          delay(400);
+           inc1++;
+           menuFlagH = LOW;
+           if(inc1 > 1){
+             inc1 = 1;
+           }
+        }
+        if(checkKeypress() == UP){
+           delay(400);
+           inc1--;
+           menuFlagH = LOW;
+           if(inc1 <= 0){
+             inc1 = 0;
+           }
+        }
+        if(checkKeypress() == RIGHT){
+           delay(400);
+           next++;
+           menuFlagH = LOW;
+           if(next == 5){
+             next = 0;
+           }
+           break;
+        }
+        if(checkKeypress() == LEFT){
+           delay(400);
+           next--;
+           menuFlagH = LOW;
+           if(next == 5){
+             next = 0;
+           }
+           inc1 = 0;
+           break;
+        }
+      }/// while inc0 == 4
+      ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+      ///////   INC  = 5  Diplays datalog
+      while(inc0 == 5){
+        wd.checkin();
+        if(Particle.connected){
+          Particle.process();
+        }
+        if(menuFlagH == LOW){
+        selectMenuString(ARIAL_8,datalogNames,inc1,3,selColor,fgColor,bgColor);
+        menuFlagH = HIGH;
+        }
+        ///////////////////////   Button Read Condition   ///////////////////////////
+        if(checkKeypress() == DOWN){
+          delay(400);
+           inc1++;
+           menuFlagH = LOW;
+           if(inc1 > 2){
+             inc1 = 2;
+           }
+        }
+        if(checkKeypress() == UP){
+           delay(400);
+           inc1--;
+           menuFlagH = LOW;
+           if(inc1 <= 0){
+             inc1 = 0;
+           }
+        }
+        if(checkKeypress() == RIGHT){
+           delay(400);
+           next++;
+           menuFlagH = LOW;
+           if(next == 5){
+             next = 0;
+           }
+           break;
+        }
+        if(checkKeypress() == LEFT){
+           delay(400);
+           next--;
+           menuFlagH = LOW;
+           if(next == 5){
+             next = 0;
+           }
+           inc1 = 0;
+           break;
+        }
+      }/// while inc0 == 5
+      ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+      ///////   INC  = 6 Diplays settins Menu
+      while(inc0 == 6){
+        wd.checkin();
+        if(Particle.connected){
+          Particle.process();
+        }
+        if(menuFlagH == LOW){
+         selectMenuString(ARIAL_8,settingNames,inc1,7,selColor,fgColor,bgColor);
+         menuFlagH = HIGH;
+        }
+        ///////////////////////   Button Read Condition   ///////////////////////////
+        if(checkKeypress() == DOWN){
+         delay(400);
+          inc1++;
+          menuFlagH = LOW;
+          if(inc1 > 6){
+            inc1 = 6;
+          }
+        }
+        if(checkKeypress() == UP){
+          delay(400);
+          inc1--;
+          menuFlagH = LOW;
+          if(inc1 <= 0){
+            inc1 = 0;
+          }
+        }
+        if(checkKeypress() == RIGHT){
+          delay(400);
+          next++;
+          menuFlagH = LOW;
+          if(next == 5){
+            next = 0;
+          }
+          break;
+        }
+        if(checkKeypress() == LEFT){
+          delay(400);
+          next--;
+          inc1 = 0;
+          menuFlagH = LOW;
+          if(next == 5){
+            next = 0;
+          }
+          break;
+        }
+      }/// while inc0 == 6
+    }//// while next = 1
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    tft.fillRect(0, 0, 128, 128, bgColor);
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // NEXT  = 2
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    while((menuState == HIGH) && (next == 2)){
+      wd.checkin();
+      inc2  = 0;
+      ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      // menu for Mode
+      ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      //// Display Inside Mode and Unit
+      while((inc0 == 0) && (inc1 == 0)){
+        wd.checkin();
+        if(Particle.connected){
+          Particle.process();
+        }
+        if(menuFlagH == LOW){
+          tft.setFont(ARIAL_8);
+          tft.setTextColor(CYAN,bgColor);
+          tft.setTextSize(1);
+          tft.setCursor(80,0);
+          tft.print(unitNames[pvUnit]);
+          tft.setTextColor(fgColor,bgColor);
+          tft.setCursor(0,0);
+          tft.print("U n i t s ");
+          tft.drawLine(0,13,128,13,fgColor);
+          menuFlagH = HIGH;
+        }
+        tft.setFont(ARIAL_12);
+        tft.setCursor(10,54);
+        tft.print(unitNames[inc2]);
+        tft.setFont(GLCDFONT);
+        tft.drawChar(charPos2[2],25,30,fgColor,bgColor,3);
+        tft.drawChar(charPos2[2],85,31,fgColor,bgColor,3);
+        ///////////////////////   Button Read Condition   ///////////////////////////
+        if(checkKeypress() == UP){
+          delay(400);
+          inc2++;
+          if(inc2 > 3){
+            inc2 = 3;
+          }
+        }
+        if(checkKeypress() == DOWN){
+          delay(400);
+          inc2--;
+          if(inc2 <= 0){
+            inc2 = 0;
+          }
+        }
+        if(checkKeypress() == ENTER){
+          tft.setTextColor(BLACK);
+          tft.setCursor(80,0);
+          tft.print(unitNames[pvUnit]);
+          pvUnit = inc2;
+          tft.setTextColor(CYAN);
+          tft.print(unitNames[pvUnit]);
+          tft.setCursor(0,110);
+          tft.setTextColor(WHITE);
+          tft.print("Saving data...");
+          EEPROM.write(ADD_UNIT,pvUnit);
+          delay(2000);
+          menuFlagH = LOW;
+          inc1 = 0;
+          next--;
+          break;
+        }
+        if(checkKeypress() == LEFT){
+          delay(400);
+          next--;
+          inc1 = 0;
+          menuFlagH = LOW;
+          break;
+        }
+      }//while inc0 == 1   inc1 == 0
+      ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      //// Display Inside  Screen
+      while((inc0 == 0) && (inc1 == 1)){
+        wd.checkin();
+        if(Particle.connected){
+          Particle.process();
+        }
+        if(menuFlagH == LOW){
+          inc2 = 1;
+          tft.setFont(ARIAL_8);
+          tft.setTextColor(CYAN,bgColor);
+          tft.setTextSize(1);
+          tft.setCursor(80,0);
+          tft.print(setScreen + 1);
+          tft.setTextColor(fgColor,bgColor);
+          tft.setCursor(0,0);
+          tft.print("S c r e e n");
+          tft.drawLine(0,13,128,13,fgColor);
+          menuFlagH = HIGH;
+        }
+        tft.setFont(ARIAL_12_N);
+        tft.setCursor(charPos2[2],54);
+        tft.print(inc2);
+        tft.setFont(GLCDFONT);
+        tft.drawChar(charPos2[2],25,30,fgColor,bgColor,3);
+        tft.drawChar(charPos2[2],85,31,fgColor,bgColor,3);
+        ///////////////////////   Button Read Condition   ///////////////////////////
+        if(checkKeypress() == UP){
+          delay(400);
+          inc2++;
+          if(inc2 > 3){
+            inc2 = 3;
+          }
+        }
+        if(checkKeypress() == DOWN){
+          delay(400);
+          inc2--;
+          if(inc2 <= 1){
+            inc2 = 1;
+          }
+        }
+        if(checkKeypress() == ENTER){
+          tft.setTextColor(BLACK);
+          tft.setCursor(80,0);
+          tft.print(setScreen);
+          setScreen = inc2 - 1;
+          tft.setTextColor(CYAN);
+          tft.print(setScreen + 1);
+          tft.setCursor(0,110);
+          tft.setTextColor(WHITE);
+          tft.print("Saving data...");
+          EEPROM.write(ADD_SCREEN,setScreen);
+          delay(2000);
+          menuFlagH = LOW;
+          inc1 = 0;
+          next--;
+          break;
+        }
+        if(checkKeypress() == LEFT){
+          delay(400);
+          next--;
+          inc1 = 0;
+          inc2 = 0;
+          menuFlagH = LOW;
+          break;
+        }
+
+      }//while inc0 == 1   inc1 == 1
+      ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      // menu for Relays
+      ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      //// Display Inside Relay Relay 1, Relay 2, Relay 3, Relay 4
+      while((inc0 == 1) && (inc1 < 4)){
+        wd.checkin();
+        if(Particle.connected){
+          Particle.process();
+        }
+        tft.setFont(ARIAL_8);
+        tft.setTextColor(fgColor,bgColor);
+        tft.setTextSize(1);
+        tft.setCursor(0,0);
+        tft.print(relayNames[inc1]);
+        tft.drawLine(0,13,128,13,fgColor);
+        if(menuFlagH == LOW){
+          selectMenuString(ARIAL_8,relay1Names,inc2,3,selColor,fgColor,bgColor);
+          menuFlagH = HIGH;
+        }
+        ///////////////////////   Button Read Condition   ///////////////////////////
+        if(checkKeypress() == DOWN){
+          delay(400);
+          inc2++;
+          menuFlagH = LOW;
+          if(inc2 > 2){
+            inc2 = 2;
+          }
+        }
+        if(checkKeypress() == UP){
+          delay(400);
+          inc2--;
+          menuFlagH = LOW;
+          if(inc2 <= 0){
+            inc2 = 0;
+          }
+        }
+        if(checkKeypress() == RIGHT){
+          menuFlagH = LOW;
+          next++;
+          if(next == 5){
+            next = 0;
+          }
+          break;
+        }
+        if(checkKeypress() == LEFT){
+          delay(400);
+          next--;
+          inc2 = 0;
+          menuFlagH = LOW;
+          break;
+        }
+      }//while inc0 == 1   inc1 == 0
+      ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      // menu for Sectors
+      ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      //// Display Inside Sector Sector1, Sector 2, Sector 3 ,Sector 4
+      while((inc0 == 2) && (inc1 < 4)){
+        wd.checkin();
+        if(Particle.connected){
+          Particle.process();
+        }
+        tft.setFont(ARIAL_8);
+        tft.setTextColor(fgColor,bgColor);
+        tft.setTextSize(1);
+        tft.setCursor(0,0);
+        tft.print(sectorNames[inc1]);
+        tft.drawLine(0,13,128,13,fgColor);
+        if(menuFlagH == LOW){
+          selectMenuString(ARIAL_8,sector1Names,inc2,3,selColor,fgColor,bgColor);
+          menuFlagH = HIGH;
+        }
+        ///////////////////////   Button Read Condition   ///////////////////////////
+        if(checkKeypress() == DOWN){
+          delay(400);
+          inc2++;
+          menuFlagH = LOW;
+          if(inc2 > 2){
+            inc2 = 2;
+          }
+        }
+        if(checkKeypress() == UP){
+          delay(400);
+          inc2--;
+          menuFlagH = LOW;
+          if(inc2 <= 0){
+            inc2 = 0;
+          }
+        }
+        if(checkKeypress() == RIGHT){
+          menuFlagH = LOW;
+          next++;
+          if(next == 5){
+            next = 0;
+          }
+          break;
+        }
+        if(checkKeypress() == LEFT){
+          delay(400);
+          next--;
+          inc2 = 0;
+          menuFlagH = LOW;
+          break;
+        }
+      }//while inc0 == 2   inc1 == 0
+      ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      // menu for Time and Date
+      ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      /////////////////////    TIME     ////////////////////////////////////////////////////////
+      //get the time from real time Clock
+      tempVar[0] = Time.hour();
+      tempVar[1] = Time.minute();
+      tempVar[2] = Time.second();
+      pos = 0;
+      while((inc0 == 4) && (inc1 == 0)){
+        wd.checkin();
+        if(Particle.connected){
+          Particle.process();
+        }
+        tft.setFont(ARIAL_8);
+        tft.setTextColor(fgColor,bgColor);
+        tft.setTextSize(1);
+        tft.setCursor(0,0);
+        tft.print("T i m e       ");
+        tft.drawLine(0,13,128,13,fgColor);
+        tft.setFont(ARIAL_8_N);
+        tft.print(Time.hour());
+        tft.print(":");
+        tft.print(Time.minute());
+        tft.print(":");
+        tft.print(Time.second());
+        if(menuFlagH == LOW){
+          tft.setFont(ARIAL_12_N);
+          hex2bcd(tempVar[0]);
+          tft.drawChar(0,54,tens,fgColor,bgColor,1);
+          tft.drawChar(15,54,ones,fgColor,bgColor,1);
+          tft.drawChar(30,54,':',fgColor,bgColor,1);
+          hex2bcd(tempVar[1]);
+          tft.drawChar(45,54,tens,fgColor,bgColor,1);
+          tft.drawChar(60,54,ones,fgColor,bgColor,1);
+          tft.drawChar(75,54,':',fgColor,bgColor,1);
+          hex2bcd(tempVar[2]);
+          tft.drawChar(90,54,tens,fgColor,bgColor,1);
+          tft.drawChar(105,54,ones,fgColor,bgColor,1);
+          tft.setFont(GLCDFONT);
+          for(i=0; i < pos  ; i++){
+             tft.drawChar( charPosDateTime[i],24,30,bgColor,bgColor,2);
+             tft.drawChar( charPosDateTime[i],85,31,bgColor,bgColor,2);
+          }
+          tft.drawChar( charPosDateTime[pos],24,30,fgColor,bgColor,2);
+          tft.drawChar( charPosDateTime[pos],85,31,fgColor,bgColor,2);
+          for(i=pos + 1  ; i < 3 ; i++){
+            tft.drawChar( charPosDateTime[i],24,30,bgColor,bgColor,2);
+            tft.drawChar( charPosDateTime[i],85,31,bgColor,bgColor,2);
+          }
+          menuFlagH = HIGH;
+        }
+        ///////////////////////   Button Read Condition   ///////////////////////////
+        if(checkKeypress() == UP){
+          delay(400);
+          tempVar[pos]++;
+          if(pos == 0){
+            if(tempVar[pos] > 23) tempVar[pos] = 23;
+          }
+          if((pos == 1) || (pos == 2)){
+            if(tempVar[pos] > 59) tempVar[pos] = 59;
+          }
+          menuFlagH = LOW;
+        }
+        if(checkKeypress() == DOWN){
+          delay(400);
+          tempVar[pos]--;
+          menuFlagH = LOW;
+          if( tempVar[pos] < 0){
+           tempVar[pos] = 0;
+          }
+
+        }
+        if(checkKeypress() == ENTER){
+          menuFlagH = LOW;
+          delay(200);
+          menuFlagH = LOW;
+          //Time.setTime(getTimestamp(Time.year(), Time.month(), Time.day(), tempVar[0], tempVar[1], tempVar[1]));
+          next--;
+          break;
+        }
+        if(checkKeypress() == LEFT){
+          delay(400);
+          menuFlagH = LOW;
+          if(pos > 0){
+            pos--;
+          }
+          if(pos == 0){
+            next--;
+            inc2 = 0;
+            menuFlagH = LOW;
+            break;
+          }
+        }
+        if(checkKeypress() == RIGHT){
+          delay(400);
+          menuFlagH = LOW;
+          if(pos < 3){
+            pos++;
+          }
+          else{
+            pos = 3;
+          }
+        }
+        /////////////////////////////////////////////////////////////////////////////////;
+      }//while inc0 == 4   inc1 == 0 Time
+      /////////////////////    TIME     ////////////////////////////////////////////////////////
+      //get the time from real time Clock
+      tempVar[0] = Time.day();
+      tempVar[1] = Time.month();
+      tempVar[2] = Time.year();
+      pos = 0;
+      while((inc0 == 4) && (inc1 == 1)){
+        wd.checkin();
+        if(Particle.connected){
+          Particle.process();
+        }
+        tft.setFont(ARIAL_8);
+        tft.setTextColor(fgColor,bgColor);
+        tft.setTextSize(1);
+        tft.setCursor(0,0);
+        tft.print("D a t e      ");
+        tft.drawLine(0,13,128,13,fgColor);
+        tft.setFont(ARIAL_8_N);
+        tft.print(Time.day());
+        tft.print("-");
+        tft.print(Time.month());
+        tft.print("-");
+        tft.print(Time.year());
+        if(menuFlagH == LOW){
+          tft.setFont(ARIAL_12_N);
+          hex2bcd(tempVar[0]);
+          tft.drawChar(0,54,tens,fgColor,bgColor,1);
+          tft.drawChar(15,54,ones,fgColor,bgColor,1);
+          tft.drawChar(30,54,'-',fgColor,bgColor,1);
+          hex2bcd(tempVar[1]);
+          tft.drawChar(45,54,tens,fgColor,bgColor,1);
+          tft.drawChar(60,54,ones,fgColor,bgColor,1);
+          tft.drawChar(75,54,'-',fgColor,bgColor,1);
+          hex2bcd(tempVar[2]);
+          tft.drawChar(90,54,tens,fgColor,bgColor,1);
+          tft.drawChar(105,54,ones,fgColor,bgColor,1);
+          tft.setFont(GLCDFONT);
+          for(i=0; i < pos  ; i++){
+             tft.drawChar( charPosDateTime[i],24,30,bgColor,bgColor,2);
+             tft.drawChar( charPosDateTime[i],85,31,bgColor,bgColor,2);
+          }
+          tft.drawChar( charPosDateTime[pos],24,30,fgColor,bgColor,2);
+          tft.drawChar( charPosDateTime[pos],85,31,fgColor,bgColor,2);
+          for(i=pos + 1  ; i < 3 ; i++){
+            tft.drawChar( charPosDateTime[i],24,30,bgColor,bgColor,2);
+            tft.drawChar( charPosDateTime[i],85,31,bgColor,bgColor,2);
+          }
+          menuFlagH = HIGH;
+        }
+        ///////////////////////   Button Read Condition   ///////////////////////////
+        if(checkKeypress() == UP){
+          delay(400);
+          tempVar[pos]++;
+          if(pos == 0){
+            if(tempVar[pos] > 31) tempVar[pos] = 31;
+          }
+          if(pos == 1){
+            if(tempVar[pos] > 12) tempVar[pos] = 12;
+          }
+          if(pos == 2){
+            if(tempVar[pos] > 99) tempVar[pos] = 99;
+          }
+          menuFlagH = LOW;
+        }
+        if(checkKeypress() == DOWN){
+          delay(400);
+          tempVar[pos]--;
+          menuFlagH = LOW;
+          if( tempVar[pos] < 1){
+           tempVar[pos] = 1;
+          }
+
+        }
+        if(checkKeypress() == ENTER){
+          menuFlagH = LOW;
+          delay(200);
+          menuFlagH = LOW;
+          //Time.setTime(getTimestamp(tempVar[0], tempVar[1], tempVar[1],Time.hour(),Time.minute(),Time.second() ));
+          next--;
+          break;
+        }
+        if(checkKeypress() == LEFT){
+          delay(400);
+          menuFlagH = LOW;
+          if(pos > 0){
+            pos--;
+          }
+          if(pos == 0){
+            next--;
+            inc2 = 0;
+            menuFlagH = LOW;
+            break;
+          }
+        }
+        if(checkKeypress() == RIGHT){
+          delay(400);
+          menuFlagH = LOW;
+          if(pos < 3){
+            pos++;
+          }
+          else{
+            pos = 3;
+          }
+        }
+        /////////////////////////////////////////////////////////////////////////////////;
+      }//while inc0 == 4   inc1 == 1 Date
+      /////////////////////    Data Log on and off    ////////////////////////////////////////////////////////
+      while( (inc0 == 5) && (inc1 == 0)){
+        wd.checkin();
+        if(Particle.connected){
+          Particle.process();
+        }
+        tft.setFont(ARIAL_8);
+        tft.setTextColor(fgColor,bgColor);
+        tft.setTextSize(1);
+        tft.setCursor(0,0);
+        tft.print("L o g  S t a t u s      ");
+        tft.print(positionNames[dataLogStatus]);
+        tft.drawLine(0,13,128,13,fgColor);
+        if(menuFlagH == LOW){
+          tft.setFont(ARIAL_12);
+          tft.setTextColor(fgColor,bgColor);
+          tft.setTextSize(1);
+          tft.setCursor(10,54);
+          tft.print(positionNames[inc2]);
+          tft.setFont(GLCDFONT);
+          tft.drawChar(charPos2[3],35,30,fgColor,bgColor,2);
+          tft.drawChar(charPos2[3],75,31,fgColor,bgColor,2);
+           menuFlagH = HIGH;
+        }
+        ///////////////////////   Button Read Condition   ///////////////////////////
+        if(checkKeypress() == UP){
+          delay(400);
+          inc2++;
+          if(inc2 > 1){
+            inc2 = 1;
+          }
+          menuFlagH = LOW;
+        }
+        if(checkKeypress() == DOWN){
+          delay(400);
+          inc2--;
+          menuFlagH = LOW;
+          if( inc2 < 0){
+           inc2 = 0;
+          }
+        }
+        if(checkKeypress() == ENTER){
+          menuFlagH = LOW;
+          delay(400);
+          dataLogStatus = inc2;
+          EEPROM.write(ADD_DATALOG_STS,dataLogStatus);
+          next--;
+          break;
+        }
+        if(checkKeypress() == LEFT){
+          delay(400);
+          menuFlagH = LOW;
+          next--;
+          inc2 = 0;
+          break;
+        }
+        if(checkKeypress() == RIGHT){
+          delay(400);
+          menuFlagH = LOW;
+          if(pos < 3){
+            pos++;
+          }
+          else{
+            pos = 3;
+          }
+        }
+      /////////////////////////////////////////////////////////////////////////////////;
+    }//while inc0 == 5  inc1 == 0
+    /////////////////////    Data Log Set Scan Time    ////////////////////////////////////////////////////////
+    hex2bcd(scanTime);
+    tempVar[0] = hunds - 48;
+    tempVar[1] = tens - 48;
+    tempVar[2] = ones - 48;
+    pos = 0;
+    while( (inc0 == 5) && (inc1 == 1)){
+      wd.checkin();
+      if(Particle.connected){
+        Particle.process();
+      }
+      tft.setFont(ARIAL_8);
+      tft.setTextColor(fgColor,bgColor);
+      tft.setTextSize(1);
+      tft.setCursor(0,0);
+      tft.print("S c a n  T i m e      ");
+      tft.print(scanTime);
+      tft.drawLine(0,13,128,13,fgColor);
+      if(menuFlagH == LOW){
+      /// selectTimeMenu(uint8_t fontName,char* displayString,char* charPositions,int positions,int foreColor, int backColor)
+       selectTimeMenu(ARIAL_12_N,tempVar,charPos2,pos,fgColor, bgColor);
+       menuFlagH = HIGH;
+      }
+      ///////////////////////   Button Read Condition   ///////////////////////////
+      if(checkKeypress() == UP){
+        delay(400);
+        tempVar[pos+1]++;
+        menuFlagH = LOW;
+        if( tempVar[pos+1] > 9){
+         tempVar[pos+1] = 9;
+        }
+        menuFlagH = LOW;
+      }
+      if(checkKeypress() == DOWN){
+        delay(400);
+        tempVar[pos+1]--;
+        menuFlagH = LOW;
+        if( tempVar[pos+1] < 0){
+         tempVar[pos+1] = 0;
+        }
+        menuFlagH = LOW;
+      }
+      if(checkKeypress() == ENTER){
+        delay(400);
+        menuFlagH = LOW;
+        scanTime = (tempVar[1] * 10)  + tempVar[2];
+        EEPROM.write(ADD_SCAN_TIME,scanTime);
+        next--;
+        break;
+      }
+      if(checkKeypress() == LEFT){
+        delay(400);
+        pos--;
+        menuFlagH = LOW;
+        if(pos < 0){
+          next--;
+          menuFlagH = LOW;
+          break;
+        }
+      }
+      if(checkKeypress() == RIGHT){
+        delay(400);
+        pos++;
+        menuFlagH = LOW;
+        if(pos > 1){
+          pos = 1;
+        }
+      }
+    /////////////////////////////////////////////////////////////////////////////////;
+    }//while inc0 == 5 inc1 == 1
+    /////////////////////    Calibration Status   ////////////////////////////////////////////
+    while( (inc0 == 6) && (inc1 == 0)){
+      wd.checkin();
+      if(Particle.connected){
+        Particle.process();
+      }
+      tft.setFont(ARIAL_8);
+      tft.setTextColor(fgColor,bgColor);
+      tft.setTextSize(1);
+      tft.setCursor(0,0);
+      tft.print("C a l   D u e   D a t e   ");
+      tft.drawLine(0,13,128,13,fgColor);
+      tft.setCursor(0,30);
+      tft.setFont(ARIAL_12);
+      tft.print("DD-MM-YYYY");
+      ///////////////////////   Button Read Condition   ///////////////////////////
+      if(checkKeypress() == ENTER){
+        delay(400);
+        menuFlagH = LOW;
+        next--;
+        break;
+      }
+      if(checkKeypress() == LEFT){
+        delay(400);
+        menuFlagH = LOW;
+        next--;
+        break;
+      }
+    }//while inc0 == 6 inc1 == 0
+    //inc2 = wifiStatus;
+    /////////////////////    Wi fi Status on and off    /////////////////////////////////
+    while( (inc0 == 6) && (inc1 == 1)){
+      wd.checkin();
+      if(Particle.connected){
+        Particle.process();
+      }
+      tft.setFont(ARIAL_8);
+      tft.setTextColor(fgColor,bgColor);
+      tft.setTextSize(1);
+      tft.setCursor(0,0);
+      tft.print("W i F i  S t a t u s  ");
+      tft.print(positionNames[wifiStatus]);
+      tft.drawLine(0,13,128,13,fgColor);
+      if(menuFlagH == LOW){
+        tft.setFont(ARIAL_12);
+        tft.setTextColor(fgColor,bgColor);
+        tft.setTextSize(1);
+        tft.setCursor(10,54);
+        tft.print(positionNames[inc2]);
+        tft.setFont(GLCDFONT);
+        tft.drawChar(charPos2[3],35,30,fgColor,bgColor,2);
+        tft.drawChar(charPos2[3],75,31,fgColor,bgColor,2);
+        menuFlagH = HIGH;
+      }
+      ///////////////////////   Button Read Condition   ///////////////////////////
+      if(checkKeypress() == UP){
+        delay(400);
+        inc2++;
+        if(inc2 > 1){
+          inc2 = 1;
+        }
+        menuFlagH = LOW;
+      }
+      if(checkKeypress() == DOWN){
+        delay(400);
+        inc2--;
+        menuFlagH = LOW;
+        if( inc2 < 0){
+         inc2 = 0;
+        }
+      }
+      if(checkKeypress() == ENTER){
+        menuFlagH = LOW;
+        delay(400);
+        dataLogStatus = inc2;
+        EEPROM.write(ADD_WIFI_STATUS,wifiStatus);
+        next--;
+        break;
+      }
+      if(checkKeypress() == LEFT){
+        delay(400);
+        menuFlagH = LOW;
+        next--;
+        inc2 = 0;
+        break;
+      }
+    }//while inc0 == 6  inc1 == 1
+    /////////////////////    Change Pin to be made later///////////////////////////////
+    while( (inc0 == 6) && (inc1 == 2)){
+      wd.checkin();
+      if(Particle.connected){
+        Particle.process();
+      }
+      tft.setFont(ARIAL_8);
+      tft.setTextColor(fgColor,bgColor);
+      tft.setTextSize(1);
+      tft.setCursor(0,0);
+      tft.print("C h a n g e  P I N");
+      tft.drawLine(0,13,128,13,fgColor);
+      if(menuFlagH == LOW){
+        tft.setFont(ARIAL_12);
+        tft.setTextColor(fgColor,bgColor);
+        tft.setTextSize(1);
+        tft.setCursor(10,54);
+        tft.print("* * * *");
+        menuFlagH = HIGH;
+      }
+      ///////////////////////   Button Read Condition   ///////////////////////////
+      if(checkKeypress() == ENTER){
+        delay(400);
+        menuFlagH = LOW;
+        next--;
+        break;
+      }
+      if(checkKeypress() == LEFT){
+        delay(400);
+        menuFlagH = LOW;
+        next--;
+        break;
+      }
+    }//while inc0 == 6  inc1 == 2
+    //////////////   Display Menu  /////////////////////////////////////
+    while((inc0 == 6) && (inc1 == 3)){
+      wd.checkin();
+      if(Particle.connected){
+        Particle.process();
+      }
+      tft.setFont(ARIAL_8);
+      tft.setTextColor(fgColor,bgColor);
+      tft.setTextSize(1);
+      tft.setCursor(0,0);
+      tft.print("D i s p l a y");
+      tft.drawLine(0,13,128,13,fgColor);
+      if(menuFlagH == LOW){
+        selectMenuString(ARIAL_8,displayNames,inc2,2,selColor,fgColor,bgColor);
+        menuFlagH = HIGH;
+      }
+      ///////////////////////   Button Read Condition   ///////////////////////////
+      if(checkKeypress() == DOWN){
+        delay(400);
+        inc2++;
+        menuFlagH = LOW;
+        if(inc2 > 1){
+          inc2 = 1;
+        }
+      }
+      if(checkKeypress() == UP){
+        delay(400);
+        inc2--;
+        menuFlagH = LOW;
+        if(inc2 <= 0){
+          inc2 = 0;
+        }
+      }
+      if(checkKeypress() == RIGHT){
+        menuFlagH = LOW;
+        next++;
+        if(next == 5){
+          next = 0;
+        }
+        break;
+      }
+      if(checkKeypress() == LEFT){
+        delay(400);
+        next--;
+        inc2 = 0;
+        menuFlagH = LOW;
+        break;
+      }
+    }//while inc0 == 2   inc1 == 3
+    /////////////////////    Setup INFORMATION about the Device////////////////////////////////////////////
+    while( (inc0 == 6) && (inc1 == 4)){
+      wd.checkin();
+      if(Particle.connected){
+        Particle.process();
+      }
+      tft.setFont(ARIAL_8);
+      tft.setTextColor(fgColor,bgColor);
+      tft.setTextSize(1);
+      tft.setCursor(0,0);
+      tft.print("D e v i c e   I n f o   ");
+      tft.drawLine(0,13,128,13,fgColor);
+      if(menuFlagH == LOW){
+        tft.setFont(ARIAL_8);
+        tft.setTextSize(1);
+        tft.setCursor(0,25);
+        tft.print("Serial No. ");
+        tft.setCursor(50,25);
+        tft.print(kuSrno);
+        tft.setCursor(0,40);
+        tft.print("Batch No. ");
+        tft.setCursor(50,40);
+        tft.print(kuBno);
+        tft.setCursor(0,55);
+        tft.print("Model No. ");
+        tft.setCursor(50,55);
+        tft.print(modelNo);
+        tft.setCursor(0,70);
+        tft.print("Firmware ");
+        tft.setCursor(50,70);
+        tft.print(firmware);
+        tft.setCursor(0,85);
+        tft.print("Output");
+        tft.setCursor(50,45);
+        tft.print(outputNames[outputType]);
+        menuFlagH = HIGH;
+      }
+      ///////////////////////   Button Read Condition   ///////////////////////////
+      if(checkKeypress() == ENTER){
+        delay(400);
+        menuFlagH = LOW;
+        next--;
+        break;
+      }
+      if(checkKeypress() == LEFT){
+        delay(400);
+        menuFlagH = LOW;
+        next--;
+        break;
+      }
+    /////////////////////////////////////////////////////////////////////////////////;
+  }//while inc0 == 6  inc1 == 4
+    /////////////////////    help ////////////////////////////////////////////
+    while( (inc0 == 6) && (inc1 == 5)){
+      wd.checkin();
+      if(Particle.connected){
+        Particle.process();
+      }
+      tft.setFont(ARIAL_8);
+      tft.setTextColor(fgColor,bgColor);
+      tft.setTextSize(1);
+      tft.setCursor(0,0);
+      tft.print("H e l p  ");
+      tft.drawLine(0,13,128,13,fgColor);
+      if(menuFlagH == LOW){
+        selectMenuString(ARIAL_8,helpNames,inc2,3,selColor,fgColor,bgColor);
+        menuFlagH = HIGH;
+      }
+      ///////////////////////   Button Read Condition   ///////////////////////////
+      if(checkKeypress() == DOWN){
+        delay(400);
+        inc2++;
+        menuFlagH = LOW;
+        if(inc2 > 2){
+          inc2 = 2;
+        }
+      }
+      if(checkKeypress() == UP){
+        delay(400);
+        inc2--;
+        menuFlagH = LOW;
+        if(inc2 <= 0){
+          inc2 = 0;
+        }
+      }
+      if(checkKeypress() == RIGHT){
+        menuFlagH = LOW;
+        next++;
+        if(next == 5){
+          next = 0;
+        }
+        break;
+      }
+      if(checkKeypress() == LEFT){
+        delay(400);
+        next--;
+        inc2 = 0;
+        menuFlagH = LOW;
+        break;
+      }
+    /////////////////////////////////////////////////////////////////////////////////;
+  }//while inc0 == 6  inc1 == 5
+    /////////////////////    Fa ]ctory Reset ////////////////////////////////////////////
+    while( (inc0 == 6) && (inc1 ==  6)){
+      wd.checkin();
+      if(Particle.connected){
+        Particle.process();
+      }
+      tft.setFont(ARIAL_8);
+      tft.setTextColor(fgColor,bgColor);
+      tft.setTextSize(1);
+      tft.setCursor(0,0);
+      tft.print("F a c t o r y   R e s e t");
+      tft.drawLine(0,13,128,13,fgColor);
+      if(menuFlagH == LOW){
+        tft.setFont(ARIAL_8);
+        tft.setTextWrap(HIGH);
+        tft.setTextSize(1);
+        tft.setCursor(0,25);
+        tft.print("Press Enter to perform    Factory Reset ");
+        tft.setTextWrap(LOW);
+        tft.setCursor(0,60);
+        tft.print("Press Back to cancel");
+        menuFlagH = HIGH;
+      }
+      ///////////////////////   Button Read Condition   ///////////////////////////
+      if(checkKeypress() == ENTER){
+        delay(400);
+        tft.fillScreen(BLACK);
+        tft.setFont(ARIAL_8);
+        tft.setTextWrap(HIGH);
+        tft.setTextSize(1);
+        tft.setCursor(0,25);
+        tft.print("Resetting all data...");
+        delay(2000);
+        factoryReset();
+        menuFlagH = LOW;
+        next--;
+        break;
+      }
+      if(checkKeypress() == LEFT){
+        delay(400);
+        menuFlagH = LOW;
+        next--;
+        break;
+      }
+    /////////////////////////////////////////////////////////////////////////////////;
+    }//while inc0 == 6  inc1 == 4
+  } // while next = 2
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  tft.fillRect(0, 0, 128, 128, bgColor);
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // NEXT  = 3
+  ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  inc3= 0;
+  while((menuState == HIGH) && (next == 3)){
+    wd.checkin();
+  ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  //// Display Inside Relay Lower Upper and Manual Reset
+    while( (inc0 == 1) && (inc1 < 4) && (inc2 < 2)){
+      wd.checkin();
+      if(Particle.connected){
+        Particle.process();
+      }
+      tft.setFont(ARIAL_8);
+      tft.setTextColor(fgColor,bgColor);
+      tft.setTextSize(1);
+      tft.setCursor(0,0);
+      tft.print(relay1Names[inc2]);
+      tft.drawLine(0,13,128,13,fgColor);
+      if(menuFlagH == LOW){
+        selectMenuString(ARIAL_8,relay2Names,inc3,2,selColor,fgColor,bgColor);
+        menuFlagH = HIGH;
+      }
+      ///////////////////////   Button Read Condition   ///////////////////////////
+      if(checkKeypress() == DOWN){
+        delay(400);
+        inc3++;
+        menuFlagH = LOW;
+        if(inc3 > 2){
+          inc3 = 0;
+        }
+      }
+      if(checkKeypress() == UP){
+        delay(400);
+        inc3--;
+        menuFlagH = LOW;
+        if(inc3 <= 0){
+          inc3 = 0;
+        }
+      }
+      if(checkKeypress() == RIGHT){
+        delay(400);
+        next++;
+        menuFlagH = LOW;
+        if(next == 5){
+         next = 0;
+        }
+        break;
+      }
+      if(checkKeypress() == LEFT){
+        delay(400);
+        menuFlagH = LOW;
+        if(next > 0){
+          next--;
+        }
+        break;
+      }
+    }//while inc0 == 1   inc1 == 0 to 4   inc2 = 0 to 1
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    //// Display Inside Relay 1 Manual Reset
+    while( (inc0 == 1) && (inc1 < 4) && (inc2 == 2)){
+      wd.checkin();
+      if(Particle.connected){
+        Particle.process();
+      }
+      tft.setFont(ARIAL_8);
+      tft.setTextColor(fgColor,bgColor);
+      tft.setTextSize(1);
+      tft.setCursor(0,0);
+      tft.print("M a n u a l   R s t");
+      tft.drawLine(0,13,128,13,fgColor);
+      if(menuFlagH == LOW){
+        tft.setFont(ARIAL_12);
+        tft.setTextColor(fgColor,bgColor);
+        tft.setTextSize(1);
+        tft.setCursor(10,54);
+        tft.print(positionNames[inc3]);
+        tft.setFont(GLCDFONT);
+        tft.drawChar(charPos2[3],35,30,fgColor,bgColor,2);
+        tft.drawChar(charPos2[3],75,31,fgColor,bgColor,2);
+        menuFlagH = HIGH;
+      }
+      ///////////////////////   Button Read Condition   ///////////////////////////
+      if(checkKeypress() == UP){
+         delay(400);
+         inc3++;
+         menuFlagH = LOW;
+         if(inc3 > 1){
+           inc3 = 0;
+         }
+      }
+      if(checkKeypress() == DOWN){
+         delay(400);
+         inc3++;
+         menuFlagH = LOW;
+         if(inc3 > 1){
+           inc3 = 0;
+         }
+      }
+      if(checkKeypress() == LEFT){
+         delay(400);
+         next--;
+         menuFlagH = LOW;
+         inc3 = 0;
+         break;
+      }
+      if(checkKeypress() == ENTER){
+        delay(400);
+        if(inc1 == 0){relay1.manRst = inc3;}//EEPROM.write(ADD_RLY1_MANRST,relay1.manRst);}
+        if(inc1 == 1){relay2.manRst = inc3;}//EEPROM.write(ADD_RLY2_MANRST,relay2.manRst);}
+        if(inc1 == 2){relay3.manRst = inc3;}//EEPROM.write(ADD_RLY3_MANRST,relay3.manRst);}
+        if(inc1 == 3){relay4.manRst = inc3;}//EEPROM.write(ADD_RLY4_MANRST,relay4.manRst);}
+        inc3 = 0;
+        next--;
+        menuFlagH = LOW;
+        break;
+       }
+    /////////////////////////////////////////////////////////////////////////////////
+    }//while end manual reset for all relays
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    //// Sector Lower and Upper Value Set
+    if(inc1 == 0){
+      if(inc2 == 0)hex2bcd(sector1.lowerSet);
+      if(inc2 == 1)hex2bcd(sector1.upperSet);
     }
- wd.checkin(); // resets the AWDT count
-}
+    if(inc1 == 1){
+      if(inc2 == 0)hex2bcd(sector2.lowerSet);
+      if(inc2 == 1)hex2bcd(sector2.upperSet);
+    }
+    if(inc1 == 2){
+      if(inc2 == 0)hex2bcd(sector3.lowerSet);
+      if(inc2 == 1)hex2bcd(sector3.upperSet);
+    }
+    if(inc1 == 3){
+      if(inc2 == 0)hex2bcd(sector4.lowerSet);
+      if(inc2 == 1)hex2bcd(sector4.upperSet);
+    }
+    tempVar[0] = thous - 48;
+    tempVar[1] = hunds - 48;
+    tempVar[2] = tens - 48;
+    tempVar[3] = ones - 48;
+    pos = 0;
+    while( (inc0 == 2) && (inc1 < 4) && (inc2 < 2)){
+      wd.checkin();
+      if(Particle.connected){
+        Particle.process();
+      }
+      tft.setFont(ARIAL_8);
+      tft.setTextColor(fgColor,bgColor);
+      tft.setTextSize(1);
+      tft.setCursor(0,0);
+      tft.print(sector1Names[inc2]);
+      tft.drawLine(0,13,128,13,fgColor);
+      if(menuFlagH == LOW){
+        selectSpMenu(ARIAL_12_N,tempVar,charPos3,pos,fgColor,bgColor);
+        menuFlagH = HIGH;
+      }
+      ///////////////////////   Button Read Condition   ///////////////////////////
+      if(checkKeypress() == UP){
+          delay(400);
+          tempVar[pos]++;
+          menuFlagH = LOW;
+          if( tempVar[pos] > 9){
+            tempVar[pos] = 9;
+          }
+       }
+       if(checkKeypress() == DOWN){
+           delay(400);
+           tempVar[pos]--;
+           menuFlagH = LOW;
+           if( tempVar[pos]< 0){
+             tempVar[pos] = 0;
+           }
+        }
+        if(checkKeypress() == RIGHT){
+           delay(400);
+           pos++;
+           menuFlagH = LOW;
+           if(pos > 3){
+             pos = 3;
+           }
+        }
+        if(checkKeypress() == LEFT){
+           delay(400);
+           pos--;
+           menuFlagH = LOW;
+           if(pos < 0){
+             next--;
+             break;
+           }
+        }
+        if(checkKeypress() == ENTER){
+          delay(400);
+          if(inc1 == 0){
+            if(inc2 == 0)sector1.lowerSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+            if(inc2 == 1)sector1.upperSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+          }
+          if(inc1 == 1){
+            if(inc2 == 0)sector2.lowerSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+            if(inc2 == 1)sector2.upperSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+          }
+          if(inc1 == 2){
+            if(inc2 == 0)sector3.lowerSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+            if(inc2 == 1)sector3.upperSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+          }
+          if(inc1 == 3){
+            if(inc2 == 0)sector4.lowerSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+            if(inc2 == 1)sector4.upperSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+          }
+          //EPROM.writeInt(ADD_RLY3_LOWERSET,relay3.lowerSet);
+          next--;
+          menuFlagH = LOW;
+          break;
+        }
+    }//while inc0 == 1   inc1 == 2   inc2 = 0  inc 3 = 0
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    //// Sector colour Set
+    while( (inc0 == 2) && (inc1 < 4) && (inc2 == 2)){
+      wd.checkin();
+      if(Particle.connected){
+        Particle.process();
+      }
+      tft.setFont(ARIAL_8);
+      tft.setTextColor(fgColor,bgColor);
+      tft.setTextSize(1);
+      tft.setCursor(0,0);
+      tft.print("Colour");
+      tft.drawLine(0,13,128,13,fgColor);
+      if(menuFlagH == LOW){
+        tft.setFont(ARIAL_12);
+        tft.setTextColor(fgColor,bgColor);
+        tft.setTextSize(1);
+        tft.setCursor(10,54);
+        tft.print(colorNames[inc3]);
+        tft.setFont(GLCDFONT);
+        tft.drawChar(charPos2[3],35,30,fgColor,bgColor,2);
+        tft.drawChar(charPos2[3],75,31,fgColor,bgColor,2);
+        menuFlagH = HIGH;
+      }
+      ///////////////////////   Button Read Condition   ///////////////////////////
+      if(checkKeypress() == UP){
+         delay(400);
+         inc3++;
+         menuFlagH = LOW;
+         if(inc3 > 3){
+           inc3 = 3;
+         }
+      }
+      if(checkKeypress() == DOWN){
+         delay(400);
+         inc3--;
+         menuFlagH = LOW;
+         if(inc3 < 0){
+           inc3 = 0;
+         }
+      }
+      if(checkKeypress() == LEFT){
+         delay(400);
+         next--;
+         menuFlagH = LOW;
+         inc3 = 0;
+         break;
+      }
+      if(checkKeypress() == ENTER){
+        delay(400);
+        if(inc1 == 0){sector1.color = inc3;}//EEPROM.write(ADD_RLY1_MANRST,relay1.manRst);}
+        if(inc1 == 1){sector2.color = inc3;}//EEPROM.write(ADD_RLY2_MANRST,relay2.manRst);}
+        if(inc1 == 2){sector3.color = inc3;}//EEPROM.write(ADD_RLY3_MANRST,relay3.manRst);}
+        if(inc1 == 3){sector4.color = inc3;}//EEPROM.write(ADD_RLY4_MANRST,relay4.manRst);}
+        inc3 = 0;
+        next--;
+        menuFlagH = LOW;
+        break;
+       }
+    /////////////////////////////////////////////////////////////////////////////////
+    }//while end Color Set for Sector
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    //// Display scroll
+    while( (inc0 == 6) && (inc1 == 3) && (inc2 == 0)){
+      wd.checkin();
+      if(Particle.connected){
+        Particle.process();
+      }
+      tft.setFont(ARIAL_8);
+      tft.setTextColor(fgColor,bgColor);
+      tft.setTextSize(1);
+      tft.setCursor(0,0);
+      tft.print("D i s p l a y  S c r o l l");
+      tft.print(autoNames[dispScroll]);
+      tft.drawLine(0,13,128,13,fgColor);
+      if(menuFlagH == LOW){
+        tft.setFont(ARIAL_12);
+        tft.setTextColor(fgColor,bgColor);
+        tft.setTextSize(1);
+        tft.setCursor(10,54);
+        tft.print(autoNames[inc2]);
+        tft.setFont(GLCDFONT);
+        tft.drawChar(charPos2[3],35,30,fgColor,bgColor,2);
+        tft.drawChar(charPos2[3],75,31,fgColor,bgColor,2);
+        menuFlagH = HIGH;
+      }
+      ///////////////////////   Button Read Condition   ///////////////////////////
+      if(checkKeypress() == UP){
+        delay(400);
+        inc3++;
+        if(inc3 > 1){
+          inc3 = 1;
+        }
+        menuFlagH = LOW;
+      }
+      if(checkKeypress() == DOWN){
+        delay(400);
+        inc3--;
+        menuFlagH = LOW;
+        if( inc2 < 0){
+         inc3 = 0;
+        }
+      }
+      if(checkKeypress() == ENTER){
+        menuFlagH = LOW;
+        delay(400);
+        dispScroll = inc3;
+        EEPROM.write(ADD_DISPSCROLL_STS,dispScroll);
+        next--;
+        break;
+      }
+      if(checkKeypress() == LEFT){
+        delay(400);
+        menuFlagH = LOW;
+        next--;
+        inc3 = 0;
+        break;
+      }
+    /////////////////////////////////////////////////////////////////////////////////
+    }//while end Color Set for Sector
+    //// Display scroll time
+    hex2bcd(scrollTime);
+    tempVar[0] = hunds - 48;
+    tempVar[1] = tens - 48;
+    tempVar[2] = ones - 48;
+    pos = 0;
+    while( (inc0 == 6) && (inc1 == 3) && (inc2 == 1)){
+      wd.checkin();
+      if(Particle.connected){
+        Particle.process();
+      }
+      tft.setFont(ARIAL_8);
+      tft.setTextColor(fgColor,bgColor);
+      tft.setTextSize(1);
+      tft.setCursor(0,0);
+      tft.print("S c r o l l  T i m e  ");
+      tft.print(scrollTime);
+      tft.drawLine(0,13,128,13,fgColor);
+      if(menuFlagH == LOW){
+       /// selectTimeMenu(uint8_t fontName,char* displayString,char* charPositions,int positions,int foreColor, int backColor)
+        selectTimeMenu(ARIAL_12_N,tempVar,charPos2,pos,fgColor, bgColor);
+        menuFlagH = HIGH;
+      }
+      ///////////////////////   Button Read Condition   ///////////////////////////
+      if(checkKeypress() == UP){
+       delay(400);
+       tempVar[pos+1]++;
+       menuFlagH = LOW;
+           if( tempVar[pos+1] > 9)
+           {
+            tempVar[pos+1] = 0;
+           }
+       menuFlagH = LOW;
+      }
+      if(checkKeypress() == DOWN){
+       delay(400);
+       menuFlagH = LOW;
+       if(pos > 0){
+         pos--;
+       }
+      }
+      if(checkKeypress() == ENTER){
+       delay(400);
+       menuFlagH = LOW;
+       scrollTime = (tempVar[1] * 10)  + tempVar[2];
+       EEPROM.write(ADD_SCAN_TIME,scrollTime);
+       next--;
+       break;
+      }
+      if(checkKeypress() == LEFT){
+       delay(400);
+       pos--;
+       menuFlagH = LOW;
+       if(pos < 0){
+         next--;
+         menuFlagH = LOW;
+         break;
+       }
+      }
+      if(checkKeypress() == RIGHT){
+       delay(400);
+       pos++;
+       menuFlagH = LOW;
+       if(pos > 1){
+         pos = 1;
+       }
+      }
+    /////////////////////////////////////////////////////////////////////////////////
+    }//while end Display scroll time
+    //// Help User Manual
+    while( (inc0 == 6) && (inc1 == 5) && (inc2 == 0)){
+      wd.checkin();
+      if(Particle.connected){
+        Particle.process();
+      }
+      tft.setFont(ARIAL_8);
+      tft.setTextColor(fgColor,bgColor);
+      tft.setTextSize(1);
+      tft.setCursor(0,0);
+      tft.print("U s e r  M a n u a l");
+      tft.drawLine(0,13,128,13,fgColor);
+      if(menuFlagH == LOW){
+        tft.fillRect(15,15,90,90,WHITE);
+        tft.drawBitmap(20, 20, BLEQR, 80, 80,BLACK);
+        menuFlagH = HIGH;
+      }
+      ///////////////////////   Button Read Condition   ///////////////////////////
+      if(checkKeypress() == LEFT){
+        delay(400);
+        next--;
+        menuFlagH = LOW;
+        break;
+       }
+    /////////////////////////////////////////////////////////////////////////////////
+    }//while end user Manual
+    //// Help Operations Manual
+    while( (inc0 == 6) && (inc1 == 5) && (inc2 == 1)){
+      wd.checkin();
+      if(Particle.connected){
+        Particle.process();
+      }
+      tft.setFont(ARIAL_8);
+      tft.setTextColor(fgColor,bgColor);
+      tft.setTextSize(1);
+      tft.setCursor(0,0);
+      tft.print("O p e r  M a n u a l");
+      tft.drawLine(0,13,128,13,fgColor);
+      if(menuFlagH == LOW){
+        tft.fillRect(15,15,90,90,WHITE);
+        tft.drawBitmap(20, 20, BLEQR, 80, 80,BLACK);
+        menuFlagH = HIGH;
+      }
+      ///////////////////////   Button Read Condition   ///////////////////////////
+      if(checkKeypress() == LEFT){
+        delay(400);
+        next--;
+        menuFlagH = LOW;
+        break;
+       }
+    /////////////////////////////////////////////////////////////////////////////////
+    }//while end user Manual
+    //// Help datasheet
+    while( (inc0 == 6) && (inc1 == 5) && (inc2 == 2)){
+      if(Particle.connected){
+        Particle.process();
+      }
+      tft.setFont(ARIAL_8);
+      tft.setTextColor(fgColor,bgColor);
+      tft.setTextSize(1);
+      tft.setCursor(0,0);
+      tft.print("D a t a s h e e t");
+      tft.drawLine(0,13,128,13,fgColor);
+      if(menuFlagH == LOW){
+        tft.fillRect(15,15,90,90,WHITE);
+        tft.drawBitmap(20, 20, BLEQR, 80, 80,BLACK);
+        menuFlagH = HIGH;
+      }
+      ///////////////////////   Button Read Condition   ///////////////////////////
+      if(checkKeypress() == LEFT){
+        delay(400);
+        next--;
+        menuFlagH = LOW;
+        break;
+       }
+    /////////////////////////////////////////////////////////////////////////////////
+    }//while end user Manual
+  } /// while next == 3
+
+  ///////////////////////////////////  End of next  = 3  /////////////////////////////////////////////////////////
+  tft.fillRect(0, 0, 128, 128, bgColor);
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // NEXT  = 4
+  ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  while( (menuState == HIGH) && (next == 4)  ){
+    wd.checkin();
+    /////  Display inside the relay upper or lower set
+    if(inc1 == 0){
+      if(inc2 == 0)hex2bcd(relay1.lowerSet);
+      if(inc2 == 1)hex2bcd(relay1.upperSet);
+    }
+    if(inc1 == 1){
+      if(inc2 == 0)hex2bcd(relay2.lowerSet);
+      if(inc2 == 1)hex2bcd(relay2.upperSet);
+    }
+    if(inc1 == 2){
+      if(inc2 == 0)hex2bcd(relay3.lowerSet);
+      if(inc2 == 1)hex2bcd(relay3.upperSet);
+    }
+    if(inc1 == 3){
+      if(inc2 == 0)hex2bcd(relay4.lowerSet);
+      if(inc2 == 1)hex2bcd(relay4.upperSet);
+    }
+    tempVar[0] = thous - 48;
+    tempVar[1] = hunds - 48;
+    tempVar[2] = tens - 48;
+    tempVar[3] = ones - 48;
+    pos = 0;
+    while( (inc0 == 1) && (inc1 < 4) && (inc2 <2) && (inc3 == 0)){
+      if(Particle.connected){
+        Particle.process();
+      }
+      tft.setFont(ARIAL_8);
+      tft.setTextColor(fgColor,bgColor);
+      tft.setTextSize(1);
+      tft.setCursor(0,0);
+      tft.print("S e t");
+      tft.drawLine(0,13,128,13,fgColor);
+      if(menuFlagH == LOW){
+        selectSpMenu(ARIAL_12_N,tempVar,charPos3,pos,fgColor,bgColor);
+        menuFlagH = HIGH;
+      }
+      ///////////////////////   Button Read Condition   ///////////////////////////
+      if(checkKeypress() == UP){
+          delay(400);
+          tempVar[pos]++;
+          menuFlagH = LOW;
+          if( tempVar[pos] > 9){
+            tempVar[pos] = 9;
+          }
+       }
+       if(checkKeypress() == DOWN){
+           delay(400);
+           tempVar[pos]--;
+           menuFlagH = LOW;
+           if( tempVar[pos]< 0){
+             tempVar[pos] = 0;
+           }
+        }
+        if(checkKeypress() == RIGHT){
+           delay(400);
+           pos++;
+           menuFlagH = LOW;
+           if(pos > 3){
+             pos = 3;
+           }
+        }
+        if(checkKeypress() == LEFT){
+           delay(400);
+           pos--;
+           menuFlagH = LOW;
+           if(pos < 0){
+             next--;
+             break;
+           }
+        }
+        if(checkKeypress() == ENTER){
+          delay(400);
+          if(inc1 == 0){
+            if(inc2 == 0)relay1.lowerSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+            if(inc2 == 1)relay1.upperSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+          }
+          if(inc1 == 1){
+            if(inc2 == 0)relay2.lowerSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+            if(inc2 == 1)relay2.upperSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+          }
+          if(inc1 == 2){
+            if(inc2 == 0)relay3.lowerSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+            if(inc2 == 1)relay3.upperSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+          }
+          if(inc1 == 3){
+            if(inc2 == 0)relay4.lowerSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+            if(inc2 == 1)relay4.upperSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+          }
+          //EPROM.writeInt(ADD_RLY3_LOWERSET,relay3.lowerSet);
+          next--;
+          menuFlagH = LOW;
+          break;
+        }
+    }//while all relay upper and lower set
+    //////////////////////////////////////////////////////////////////////////////////////////////
+    ////    Display Inside Relay lower or upper delay
+    if(inc1 == 0){
+      if(inc2 == 0)hex2bcd(relay1.lowerDelay);
+      if(inc2 == 1)hex2bcd(relay1.upperDelay);
+    }
+    if(inc1 == 1){
+      if(inc2 == 0)hex2bcd(relay2.lowerDelay);
+      if(inc2 == 1)hex2bcd(relay2.upperDelay);
+    }
+    if(inc1 == 2){
+      if(inc2 == 0)hex2bcd(relay3.lowerDelay);
+      if(inc2 == 1)hex2bcd(relay3.upperDelay);
+    }
+    if(inc1 == 3){
+      if(inc2 == 0)hex2bcd(relay4.lowerDelay);
+      if(inc2 == 1)hex2bcd(relay4.upperDelay);
+    }
+    tempVar[0] = hunds - 48;
+    tempVar[1] = tens - 48;
+    tempVar[2] = ones - 48;
+    pos = 0;
+    while( (inc0 == 1) && (inc1 < 4) && (inc2 <2) && (inc3 == 1)){
+      wd.checkin();
+      if(Particle.connected){
+        Particle.process();
+      }
+      tft.setFont(ARIAL_8);
+      tft.setTextColor(fgColor,bgColor);
+      tft.setTextSize(1);
+      tft.setCursor(0,0);
+      tft.print("D e l a y");
+      tft.drawLine(0,13,128,13,fgColor);
+      if(menuFlagH == LOW){
+        selectTimeMenu(ARIAL_12_N,tempVar,charPos2,pos,fgColor, bgColor);
+        menuFlagH = HIGH;
+      }
+      ///////////////////////   Button Read Condition   ///////////////////////////
+      if(checkKeypress() == UP){
+          delay(400);
+          tempVar[pos]++;
+          menuFlagH = LOW;
+          if( tempVar[pos] > 9){
+            tempVar[pos] = 9;
+          }
+       }
+       if(checkKeypress() == DOWN){
+           delay(400);
+           tempVar[pos]--;
+           menuFlagH = LOW;
+           if(tempVar[pos]< 0){
+             tempVar[pos] = 0;
+           }
+        }
+        if(checkKeypress() == RIGHT){
+           delay(400);
+           pos++;
+           menuFlagH = LOW;
+           if(pos > 1){
+             pos = 1;
+           }
+        }
+        if(checkKeypress() == LEFT){
+           delay(400);
+           pos--;
+           menuFlagH = LOW;
+           if(pos < 0){
+             next--;
+             break;
+           }
+        }
+        if(checkKeypress() == ENTER){
+          delay(400);
+          if(inc1 == 0){
+            if(inc2 == 0)relay1.lowerDelay = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+            if(inc2 == 1)relay1.upperDelay = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+          }
+          if(inc1 == 1){
+            if(inc2 == 0)relay2.lowerDelay = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+            if(inc2 == 1)relay2.upperDelay = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+          }
+          if(inc1 == 2){
+            if(inc2 == 0)relay3.lowerDelay = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+            if(inc2 == 1)relay3.upperDelay = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+          }
+          if(inc1 == 3){
+            if(inc2 == 0)relay4.lowerDelay = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+            if(inc2 == 1)relay4.upperDelay = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+          }
+          next--;
+          menuFlagH = LOW;
+          break;
+        }
+      }//while all relay upper and lower delay
+     }/// end while next = 4
+  ///////////////////////////////////  End of  Menu  /////////////////////////////////////////////////////////
+  }// while menuState = HIGH
+
+
+} ///  End of code
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Functions
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Bar Graph Functions.
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+void displayBargraph(uint8_t value){
+  Wire.beginTransmission(0x6C);
+  Wire.write(value);
+  Wire.write(20);
+  Wire.endTransmission();
+      // wait 5 seconds for next scan
+  Wire.beginTransmission(0x6C);
+  Wire.endTransmission();
+}
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Key press Functions
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+uint8_t checkKeypress(){
+  uint8_t c = 0;
+  Wire.beginTransmission(0x6C);
+  Wire.requestFrom(0x6C,1);    // request 6 bytes from slave device #2
+  while(Wire.available()){
+    c= Wire.read();    // receive a byte as character
+  }
+  Wire.endTransmission();
+  if(c == 0) return 0;
+  if (c & ENTER_BUT) { Serial.println("Enter Key Pressed");return 1 ;}
+  if (c & RIGHT_BUT) { Serial.println("Right Key Pressed");return 2;}
+  if (c & LEFT_BUT) {Serial.println("Left Key Pressed");return 3;}
+  if (c & DOWN_BUT){Serial.println("Down Key Pressed");return 4;}
+  if (c & UP_BUT) {Serial.println("Up Key Pressed");return 5;}
+}
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Print all the things on OLED
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -215,10 +2283,10 @@ float screen1(long value,int unit){
         drawPoint(90,59,4,fgColor);
         tft.drawChar(100,30,ones,fgColor,bgColor,1);///Print for MPa
     }
-   tft.drawFastHLine(0,75,128,selColor);
-   tft.drawFastHLine(0,76,128,selColor);
-   tft.setFont(ARIAL_8);
-   tft.setCursor(50,85);
+   tft.drawFastHLine(0,75,128,HomeScreenColor);
+   tft.drawFastHLine(0,76,128,HomeScreenColor);
+   tft.setFont(ARIAL_12);
+   tft.setCursor(30,85);
    tft.setTextColor(WHITE);
    tft.print(unitNames[unit]);
    tft.fillRect(0,0,128,20,printSector(var));
@@ -266,8 +2334,8 @@ float screen2(long value,int unit){
         drawPoint(90,59,4,fgColor);
         tft.drawChar(100,30,ones,fgColor,bgColor,1);///Print for MPa
     }
-    tft.drawFastHLine(0,75,128,selColor);
-    tft.drawFastHLine(0,76,128,selColor);
+    tft.drawFastHLine(0,75,128,HomeScreenColor);
+    tft.drawFastHLine(0,76,128,HomeScreenColor);
     tft.setFont(ARIAL_12);
     tft.setCursor(0,0);
     tft.setTextColor(WHITE);
@@ -282,7 +2350,7 @@ float screen2(long value,int unit){
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 float screen3(long value,int unit){
     float var;
-    tft.setFont(ARIAL_8_N);
+    tft.setFont(ARIAL_12_N);
     fgColor = WHITE;
     tft.setTextColor(WHITE);
     if(unit == 0){
@@ -371,8 +2439,8 @@ void screen4(long value,int unit){
       drawPoint(90,59,4,fgColor);
       tft.drawChar(100,30,ones,fgColor,bgColor,1);///Print for MPa
   }
- tft.drawFastHLine(0,75,128,selColor);
- tft.drawFastHLine(0,76,128,selColor);
+ tft.drawFastHLine(0,75,128,HomeScreenColor);
+ tft.drawFastHLine(0,76,128,HomeScreenColor);
  tft.setFont(ARIAL_8);
  tft.setCursor(50,85);
  tft.setTextColor(WHITE);
@@ -386,20 +2454,20 @@ void screen4(long value,int unit){
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 unsigned int printSector(unsigned int value){
     unsigned int color;
-    if((value >=sector1.lowerSet) && (value <= sector1.upperSet)){
+    if((value >=convertSectorValue(sector1.lowerSet,pvUnit)) && (value <= convertSectorValue(sector1.upperSet,pvUnit))){
         return colorValues[sector1.color];
     }
-    else if((value > sector2.lowerSet) && (value <= sector2.upperSet)){
+    else if((value > convertSectorValue(sector2.lowerSet,pvUnit)) && (value <= convertSectorValue(sector2.upperSet,pvUnit))){
         return colorValues[sector2.color];
     }
-    else if((value > sector3.lowerSet) && (value <= sector3.upperSet)){
+    else if((value > convertSectorValue(sector3.lowerSet,pvUnit)) && (value <= convertSectorValue(sector3.upperSet,pvUnit))){
         return colorValues[sector3.color];
     }
-    else if((value > sector4.lowerSet) && (value <= sector4.upperSet)){
+    else if((value > convertSectorValue(sector4.lowerSet,pvUnit)) && (value <= convertSectorValue(sector4.upperSet,pvUnit))){
        return colorValues[sector4.color];
     }
     else{
-      return RED;
+      return BLACK;
     }
 }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -470,108 +2538,7 @@ void drawPoint(int x,int y, int pointSize,int pointColor){
    }
  }
 }
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// LED Bar Graph Display Functions
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void initMax7219(){
-  SPI.begin(CS_MAX); // wake up the SPI bus.
-  SPI.setBitOrder(MSBFIRST);
-  commandMax(0x00,0x09); // BCD mode for digit decoding
-  commandMax(0x02,0x0A); // Segment luminosity intensity
-  commandMax(0x07,0x0B);//Display refresh
-  commandMax(0x01,0x0C);  // Turn on the display
-  commandMax(0x00,0x0F); // No test
- }
-////////////////////////////////////////////////////////////////////
-void displayMax(int num,int pos){
-  digitalWrite(CS_MAX,LOW);    // SELECT MAX
-  SPI.transfer(pos);
-  SPI.transfer(num);
-  digitalWrite(CS_MAX,HIGH);        // DESELECT MAX
-  delay(10);
-}
-////////////////////////////////////////////////////////////////////
- void commandMax(int num,int pos){
-   digitalWrite(CS_MAX,LOW);    // SELECT MAX
-   SPI.transfer(pos);
-   SPI.transfer(num);
-   digitalWrite(CS_MAX,HIGH);        // DESELECT MAX
-   delay(10);
-}
-////////////////////////////////////////////////////////////////////
- void clearMax(){
-   displayMax(0x00,1);
-   displayMax(0x00,2);
-   displayMax(0x00,3);
-   displayMax(0x00,4);
-   displayMax(0x00,5);
-   displayMax(0x00,6);
-   displayMax(0x00,7);
-   displayMax(0x00,8);
- }
- ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
- /// Display the bar graph on the LED's
- ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void displayBargraph(int value){
-  int temp;
-  int row,col,rem,i,j;
-  byte newByte;
-  initMax7219();
-  row = value / 8;
-  rem = value % 8;
-  if((row == 6) && (rem == 0)){
-    displayMax(0x9F,7);
-  }
-  else if((row == 6) && (rem == 1)){
-    displayMax(0xDF,7);
-  }
-   else if((row == 6) && (rem == 2)){
-    displayMax(0xFF,7);
-  }
-  else{
-    displayMax(0x9F,7);
-  }
-  displayMax(0xFF,8);
-  if(value == 0){
-    row = 0;
-    col = 0;
-    rem = 0;
-  }
-  for(i=0;i<row;i++){
-    displayMax(0xff,i+1);
-  }
-  if(value > 0){
-  temp  = (0x01<<rem)-1;
-  }
-  else{
-    temp = 0;
-  }
-  if(row == 6){
-    temp = ((0x01<<rem)-1) |0xFC;
-  }
-  for (i=0,j=7;i<8;){ // adjust values for nibbles
-    bitWrite(newByte, i++, bitRead(temp, j--)); // adjust bitRead offset for nibbles
-  }
-  displayMax(cyclicRotate(newByte),row+1);
-  for(i= row+1;i<6;i++){
-    displayMax(0x00,i+1);
-  }
-}
-////////////////////////////////////////////////////////////////////
-byte cyclicRotate(byte tempByte){
-    byte tempByte1;
-    if(bitRead(tempByte,0))    {
-        tempByte1 = tempByte >> 1 | 0x80;
-    }
-    else{
-        tempByte1 = tempByte >> 1 ;
-    }
-    /*for(int i =0;i<6;i++)
-    {
-        bitWrite(tempByte1,6-i,bitRead(tempByte,i));
-    }*/
-    return tempByte1;
-}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// Read EEprom
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -611,11 +2578,19 @@ void readEEPROM(){
     EEPROM.get(ADD_RLY4_LOWERDEL,relay4.lowerDelay);
     dataLogStatus = EEPROM.read(ADD_DATALOG_STS);
     scanTime = EEPROM.read(ADD_DATALOG_TIME);
-    wifiStatus = EEPROM.read(WIFI_STATUS);
+    wifiStatus = EEPROM.read(ADD_WIFI_STATUS);
     EEPROM.get(ADD_ADC_CAL_0,calAdc[0]);
     EEPROM.get(ADD_ADC_CAL_1,calAdc[1]);
     EEPROM.get(ADD_DISP_CAL_0,calDisp[0]);
     EEPROM.get(ADD_DISP_CAL_1,calDisp[1]);
+    EEPROM.get(ADD_KUSRNO,kuSrno);
+    EEPROM.get(ADD_KUBATCHNO,kuBno);
+    EEPROM.get(ADD_TCSSRNO,tcsSrno);
+    EEPROM.get(ADD_TCSBATCHNO,tcsBno);
+    EEPROM.get(ADD_PASS_ADMIN,adminPass);
+    EEPROM.get(ADD_PASS_USER,userPass);
+    EEPROM.get(ADD_MODELNO,modelNo);
+    EEPROM.get(ADD_FIRMWARE,firmware);
 }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// Check the status of the Relays
@@ -684,49 +2659,8 @@ signed long MCP3421getLong(uint8_t addr,uint8_t sr){
   }
    return(l1);
 }
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///  Arduino map Function but as FLoat
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-float mapf(float x, float in_min, float in_max, float out_min, float out_max){
- return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
-}
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///  Bluetooth mode Selection
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void bluetoothMode(uint8_t modeSel){
-  pinMode(BTAT,OUTPUT);
-  if(modeSel == 0){
-      digitalWrite(BTAT,LOW);
-  }
-  else{
-     digitalWrite(BTAT,HIGH);
-  }
-}
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///  Initial screen for USB Debug
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void serialDebugInit(){
-  Serial.println("");
-  Serial.println(" _  __         _    _  _____ _______ _    _ ____  _    _    _    _ _______     ______   _____ ");
-  Serial.println("| |/ /    /\  | |  | |/ ____|__   __| |  | |  _ \| |  | |  | |  | |  __ \ \   / / __ \ / ____|");
-  Serial.println("| ' /    /  \ | |  | | (___    | |  | |  | | |_) | |__| |  | |  | | |  | \ \_/ / |  | | |  __ ");
-  Serial.println("|  <    / /\ \| |  | |\___ \   | |  | |  | |  _ <|  __  |  | |  | | |  | |\   /| |  | | | |_ |");
-  Serial.println("| . \  / ____ \ |__| |____) |  | |  | |__| | |_) | |  | |  | |__| | |__| | | | | |__| | |__| |");
-  Serial.println("|_|\_\/_/    \_\____/|_____/   |_|   \____/|____/|_|  |_|   \____/|_____/  |_|  \____/ \_____|");
-  Serial.println("");
-  Serial.println("");
-  Serial.println("Welcome to the Smart Pressure Transmitter Debug Console !!!!");
-  Serial.println("");
-  Serial.println("Press r to check the RELAY Settings.  ");
-  Serial.println("Press s to check the SECTOR Settings.  ");
-  Serial.println("Press t to check the TIME Settings.  ");
-  Serial.println("Press d to check the DATALOG Settings.  ");
-  Serial.println("Press b to turn on/off Bluetooth commands debugging.  ");
-  Serial.println("Press l to turn on/off Live Data debugging.  ");
-  Serial.println("Press w to check Wifi Settings.  ");
-  Serial.println("Press a to see device parameters.  ");
-}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// Bluetooth event checks for incoming data via bluettoth for settings
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1028,27 +2962,46 @@ void bluetoothEvent(){
     EEPROM.write(ADD_DATALOG_STS,dataLogStatus);
   }
   //////////////////////////////////////////////////////////////////////////////////////////////////////////
-  //Calibration
-  if(inString.charAt(0) == 'C'){
-    int tempRelay[4];
+  //Edit Device Master
+  if(inString.charAt(0) == 'E'){
     int length = inString.length();
     index[0] = inString.indexOf(',',2);
-    tempRelay[0] = inString.substring(2, index[0]).toInt();
+    string1 = inString.substring(2, index[0]);
+    string1.toCharArray(kuSrno, 10);
     tempString = inString.substring(index[0]+1, length);
     index[0] = tempString.indexOf(',');
-    tempRelay[1] = tempString.substring(0, index[0]).toInt() * 10;
+    string1  = tempString.substring(0, index[0]);
+    string1.toCharArray(kuBno, 10);
     tempString = tempString.substring(index[0]+1,length);
     index[0] = tempString.indexOf(',');
-    tempRelay[2] = tempString.substring(0, index[0]).toInt();
-    tempRelay[3] = tempString.substring(index[0]+1,length).toInt() *10;
-    calAdc[0] = tempRelay[0];
-    calDisp[0] = tempRelay[1];
-    calAdc[1] = tempRelay[2];
-    calDisp[1] = tempRelay[3];
-    EEPROM.put(ADD_ADC_CAL_0,calAdc[0]);
-    EEPROM.put(ADD_ADC_CAL_1,calAdc[1]);
-    EEPROM.put(ADD_DISP_CAL_0,calDisp[0]);
-    EEPROM.put(ADD_DISP_CAL_1,calDisp[1]);
+    string1  = tempString.substring(0, index[0]);
+    string1.toCharArray(tcsSrno, 10);
+    tempString = tempString.substring(index[0]+1,length);
+    index[0] = tempString.indexOf(',');
+    string1 = tempString.substring(0, index[0]);
+    string1.toCharArray(tcsBno, 10);
+    tempString = tempString.substring(index[0]+1,length);
+    index[0] = tempString.indexOf(',');
+    string1  = tempString.substring(0, index[0]);
+    string1.toCharArray(adminPass, 10);
+    tempString = tempString.substring(index[0]+1,length);
+    index[0] = tempString.indexOf(',');
+    string1  = tempString.substring(0, index[0]);
+    string1.toCharArray(userPass, 10);
+    tempString = tempString.substring(index[0]+1,length);
+    index[0] = tempString.indexOf(',');
+    string1  = tempString.substring(0, index[0]);
+    string1.toCharArray(modelNo, 10);
+    string1  = tempString.substring(index[0]+1,length);
+    string1.toCharArray(firmware, 10);
+    EEPROM.put(ADD_KUSRNO,kuSrno);
+    EEPROM.put(ADD_KUBATCHNO,kuBno);
+    EEPROM.put(ADD_TCSSRNO,tcsSrno);
+    EEPROM.put(ADD_TCSBATCHNO,tcsBno);
+    EEPROM.put(ADD_PASS_ADMIN,adminPass);
+    EEPROM.put(ADD_PASS_USER,userPass);
+    EEPROM.put(ADD_MODELNO,modelNo);
+    EEPROM.put(ADD_FIRMWARE,firmware);
   }
   //////////////////////////////////////////////////////////////////////////////////////////////////////////
   //  Device Settings
@@ -1076,7 +3029,7 @@ void bluetoothEvent(){
       settingsChangeLog("Wifi Status ",positionNames[wifiStatus] ,positionNames[tempInt]);
     }
     wifiStatus = tempInt;
-    EEPROM.write(WIFI_STATUS,wifiStatus);
+    EEPROM.write(ADD_WIFI_STATUS,wifiStatus);
     WiFi.setCredentials(WifiSSID,WifiPASS);
     if(wifiStatus){
       WiFi.on();
@@ -1164,7 +3117,72 @@ void bluetoothEvent(){
     //readFile(fileName);
     }
 }
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///  Factory Reset condition
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+void factoryReset(){
+  EEPROM.write(ADD_UNIT,0);
+  EEPROM.write(ADD_SCREEN,0);
+  EEPROM.put(ADD_RANGEH,(int)100);
+  EEPROM.put(ADD_RANGEL,(int)0);
+  EEPROM.write(ADD_WIFI_STATUS,1);
+  EEPROM.write(ADD_DATALOG_STS,1);
+  EEPROM.write(ADD_DATALOG_TIME,1);
+  EEPROM.put(ADD_RLY1_UPPERSET,(uint16_t)20);
+  EEPROM.put(ADD_RLY1_LOWERSET,(uint16_t)10);
+  EEPROM.put(ADD_RLY1_UPPERDEL,(uint16_t)3);
+  EEPROM.put(ADD_RLY1_LOWERDEL,(uint16_t)3);
+  EEPROM.put(ADD_RLY2_UPPERSET,(uint16_t)40);
+  EEPROM.put(ADD_RLY2_LOWERSET,(uint16_t)30);
+  EEPROM.put(ADD_RLY2_UPPERDEL,(uint16_t)2);
+  EEPROM.put(ADD_RLY2_LOWERDEL,(uint16_t)2);
+  EEPROM.put(ADD_RLY3_UPPERSET,(uint16_t)60);
+  EEPROM.put(ADD_RLY3_LOWERSET,(uint16_t)50);
+  EEPROM.put(ADD_RLY3_UPPERDEL,(uint16_t)1);
+  EEPROM.put(ADD_RLY3_LOWERDEL,(uint16_t)1);
+  EEPROM.put(ADD_RLY4_UPPERSET,(uint16_t)90);
+  EEPROM.put(ADD_RLY4_LOWERSET,(uint16_t)80);
+  EEPROM.put(ADD_RLY4_UPPERDEL,(uint16_t)0);
+  EEPROM.put(ADD_RLY4_LOWERDEL,(uint16_t)0);
+  EEPROM.put(ADD_SEC1_LOWERSET,(uint16_t)0);
+  EEPROM.put(ADD_SEC1_UPPERSET,(uint16_t)20);
+  EEPROM.put(ADD_SEC1_COLOR,GREEN);
+  EEPROM.put(ADD_SEC2_LOWERSET,(uint16_t)21);
+  EEPROM.put(ADD_SEC2_UPPERSET,(uint16_t)50);
+  EEPROM.put(ADD_SEC2_COLOR,YELLOW);
+  EEPROM.put(ADD_SEC3_LOWERSET,(uint16_t)51);
+  EEPROM.put(ADD_SEC3_UPPERSET,(uint16_t)80);
+  EEPROM.put(ADD_SEC3_COLOR,ORANGE);
+  EEPROM.put(ADD_SEC4_LOWERSET,(uint16_t)81);
+  EEPROM.put(ADD_SEC4_UPPERSET,(uint16_t)100);
+  EEPROM.put(ADD_SEC4_COLOR,RED);
+  System.reset();
+}
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///  Initial screen for USB Debug
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+void serialDebugInit(){
+  Serial.println("");
+  Serial.println(" _  __         _    _  _____ _______ _    _ ____  _    _    _    _ _______     ______   _____ ");
+  Serial.println("| |/ /    /\  | |  | |/ ____|__   __| |  | |  _ \| |  | |  | |  | |  __ \ \   / / __ \ / ____|");
+  Serial.println("| ' /    /  \ | |  | | (___    | |  | |  | | |_) | |__| |  | |  | | |  | \ \_/ / |  | | |  __ ");
+  Serial.println("|  <    / /\ \| |  | |\___ \   | |  | |  | |  _ <|  __  |  | |  | | |  | |\   /| |  | | | |_ |");
+  Serial.println("| . \  / ____ \ |__| |____) |  | |  | |__| | |_) | |  | |  | |__| | |__| | | | | |__| | |__| |");
+  Serial.println("|_|\_\/_/    \_\____/|_____/   |_|   \____/|____/|_|  |_|   \____/|_____/  |_|  \____/ \_____|");
+  Serial.println("");
+  Serial.println("");
+  Serial.println("Welcome to the Smart Pressure Transmitter Debug Console !!!!");
+  Serial.println("");
+  Serial.println("Press r to check the RELAY Settings.  ");
+  Serial.println("Press s to check the SECTOR Settings.  ");
+  Serial.println("Press t to check the TIME Settings.  ");
+  Serial.println("Press d to check the DATALOG Settings.  ");
+  Serial.println("Press b to turn on/off Bluetooth commands debugging.  ");
+  Serial.println("Press l to turn on/off Live Data debugging.  ");
+  Serial.println("Press w to check Wifi Settings.  ");
+  Serial.println("Press a to see device parameters.  ");
+}
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Debug Screen on Serial Console
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void debugEvent(){
@@ -1327,7 +3345,7 @@ void debugEvent(){
     index[1] = tempString.indexOf(',');
     WifiPASS = tempString.substring(0, index[1]);
     wifiStatus = tempString.substring(index[1]+1,length).toInt();
-    EEPROM.write(WIFI_STATUS,wifiStatus);
+    EEPROM.write(ADD_WIFI_STATUS,wifiStatus);
     if((WifiSSID.toInt() != 0) && (WifiPASS.toInt() != 0)){
       WiFi.setCredentials(WifiSSID,WifiPASS);
       Serial.print("Connecting to ");
@@ -1349,19 +3367,18 @@ void debugEvent(){
   }
 ///////////////////////////////////ABOUT///////////////////////////////////////
   if(inString.charAt(0) == 'a' ){
-    String testString;
-    EEPROM.get(ADD_KUSRNO,testString);
-    Serial.print("Serial No : ");
-    Serial.println(testString);
-    EEPROM.get(ADD_KUBATCHNO,testString);
-    Serial.print("Batch No : ");
-    Serial.println(testString);
-    EEPROM.get(ADD_MODEL,testString);
-    Serial.print("Model No : ");
-    Serial.println(testString);
-    EEPROM.get(ADD_FIRMWARE,testString);
+    Serial.print("KU Serial No : ");
+    Serial.println((kuSrno));
+    Serial.print("KU Batch No : ");
+    Serial.println((kuBno));
+    Serial.print("TCS Serial No : ");
+    Serial.println((tcsSrno));
+    Serial.print("TCS Batch No : ");
+    Serial.println((tcsBno));
+    Serial.print("Model Number : ");
+    Serial.println((modelNo));
     Serial.print("Firmware Version : ");
-    Serial.println(testString);
+    Serial.println((firmware));
     Serial.printlnf("System version: %s", System.version().c_str());
     Serial.print("Device ID : ");
     Serial.println(System.deviceID());
@@ -1393,7 +3410,38 @@ void debugEvent(){
 ///  Send all the saved data from the device to mobile
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void sendDataBluetooth(){
-  Serial1.println("KSNO=KU12345,KBNO=170120,TSNO=2072756,TBNO=161225,NEWDEVICE=1,PASSSUPER=abc123,PASSADMIN=abc123,PASSUSER=abc123,RANGEL=0000,RANGEH=6000,VALUE=INT,SENSOR=1,OUTPUT=3,WIFISSID=skynet,WIFIPASS=password,MODE=1,DIA=,DNST=,UNIT=2,SCREEN=2,ZONE1L=ml,ZONE1H=INT,ZONE1CL=INT,ZONE2L=INT,ZONE2H=INT,ZONE2CL=INT,ZONE3L=INT,ZONE3H=INT,ZONE3CL=INT,ZONE4L=INT,ZONE4H=INT,ZONE4CL=INT,R1LS=INT,R1LD=INT,R1US=INT,R1UD=INT,R1MR=INT,R2LS=INT,R2LD=INT,R2US=INT,R2UD=INT,R2MR=INT,R3LS=INT,R3LD=INT,R3US=INT,R3UD=INT,R3MR=INT,R4LS=INT,R4LD=INT,R4US=INT,R4UD=INT,R4MR=INT,OUTCALZ=INT,OUTCALS=INT,SCANTIME=INT,DATALOGSTS=BOOLEAN,DATALOGTIME=INT,DISPSCROLLTIME=INT,DISPSCROLLSTS=BOOLEAN,CALDUE=STRING,TAGNO=INT,MODEL=STRING,FIRMWARE=STRING,~");
+  Serial1.print("KSNO=");
+  Serial1.print(kuSrno);
+  Serial1.print(",");
+  Serial1.print("KBNO=");
+  Serial1.print(kuBno);
+  Serial1.print(",");
+  Serial1.print("TSNO=");
+  Serial1.print(tcsSrno);
+  Serial1.print(",");
+  Serial1.print("TBNO=");
+  Serial1.print(tcsBno);
+  Serial1.print(",");
+  Serial1.print("PASSSUPER=");
+  Serial1.print(superPass);
+  Serial1.print(",");
+  Serial1.print("PASSADMIN=");
+  Serial1.print(adminPass);
+  Serial1.print(",");
+  Serial1.print("PASSUSER=");
+  Serial1.print(userPass);
+  Serial1.print(",");
+  Serial1.print("MODE=");
+  Serial1.print(mode);
+  Serial1.print(",");
+  Serial1.print("UNIT=");
+  Serial1.print(pvUnit);
+  Serial1.print(",");
+  Serial1.print("SCREEN=");
+  Serial1.print(setScreen);
+  Serial1.print(",");
+  Serial1.print("~");
+
 }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///  DataLogging writes data to DATA_DDMMYYYY.txt file
@@ -1801,7 +3849,144 @@ void displayRelayValues(Relay* relay){
   tft.drawChar(62,54,0x18,RED,bgColor,2);
   tft.drawChar(62,86,0x19,RED,bgColor,2);
 }
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///  Arduino map Function but as FLoat
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+float mapf(float x, float in_min, float in_max, float out_min, float out_max){
+ return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///  Bluetooth mode Selection
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+void bluetoothCon(){
+  pinMode(BTAT,INPUT_PULLDOWN);
+  if(digitalRead(BTAT)){
+    tft.drawBitmap(60, 110, bluetooth, 16, 16,BLUE);//display bluettoth ICON
+  }
+  else{
+    tft.drawBitmap(60, 110, bluetooth, 16, 16,BLACK);
+  }
+}
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///  Select Menu String from a list
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void selectMenuString(uint8_t fontName,char** displayString,int selectedString,int maxValue,int changeColor,int foreColor, int backColor)
+{
+  int i;
+  tft.setFont(fontName);
+  for(i = 0;i < selectedString;i++)
+   {
+     tft.setTextColor(foreColor,bgColor);
+     tft.setTextSize(1);
+     tft.setCursor(0, (i +1)*16 );
+     tft.print(displayString[i]);
+   }
+  tft.setTextColor(changeColor,backColor);
+  tft.setTextSize(1);
+  tft.setCursor(0, (selectedString+1) *16);
+  tft.print(displayString[selectedString]);
+
+  for(i = selectedString+1;i < maxValue;i++)
+  {
+  tft.setTextColor(foreColor,backColor);
+  tft.setTextSize(1);
+  tft.setCursor(0, (i + 1)*16 );
+  tft.print(displayString[i]);
+  }
+}
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///  Select Time based Units
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void selectTimeMenu(uint8_t fontName,int*  displayString,char*  charPositions,int positions,int foreColor, int backColor)
+{
+  tft.setFont(fontName);
+  tft.drawChar(45,54,displayString[1]+48,foreColor,bgColor,1);
+  tft.drawChar(60,54,displayString[2]+48,foreColor,bgColor,1);
+
+  tft.setFont(GLCDFONT);
+        for(i=0; i < positions  ; i++)
+        {
+           tft.drawChar(charPositions[i+3],35,30,backColor,backColor,2);
+           tft.drawChar(charPositions[i+3],75,31,backColor,backColor,2);
+        }
+
+  tft.drawChar(charPositions[positions+3],35,30,foreColor,backColor,2);
+  tft.drawChar(charPositions[positions+3],75,31,foreColor,backColor,2);
+
+        for(i=positions + 1  ; i < 2; i++)
+        {
+          tft.drawChar(charPositions[i+3],35,30,backColor,backColor,2);
+          tft.drawChar(charPositions[i+3],75,31,backColor,backColor,2);
+        }
+
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///  Select Set points or 3.0 digit based Units
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void selectSpMenu(uint8_t fontName,int*  displayString,char*  charPositions,int positions,int foreColor, int backColor)
+{
+  tft.setFont(fontName);
+  tft.drawChar(charPositions[0],54,displayString[0]+48,foreColor,backColor,1);
+  tft.drawChar(charPositions[1],54,displayString[1]+48,foreColor,backColor,1);
+  tft.drawChar(charPositions[2],54,displayString[2]+48,foreColor,backColor,1);
+  tft.drawChar(charPositions[3]-15,54,'.',foreColor,backColor,1);
+  tft.drawChar(charPositions[3],54,displayString[3]+48,foreColor,backColor,1);
+  tft.setFont(GLCDFONT);
+        for(i=0; i < positions ; i++)
+        {
+           tft.drawChar(charPositions[i],35,30,backColor,backColor,2);
+           tft.drawChar(charPositions[i],75,31,backColor,backColor,2);
+        }
+
+  tft.drawChar(charPositions[positions],35,30,foreColor,backColor,2);
+  tft.drawChar(charPositions[positions],75,31,foreColor,backColor,2);
+
+        for(i=positions + 1  ; i < 4 ; i++)
+        {
+          tft.drawChar(charPositions[i],35,30,backColor,backColor,2);
+          tft.drawChar(charPositions[i],75,31,backColor,backColor,2);
+        }
+}
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///  Convert time and date to unix time stamp
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+unsigned long getTimestamp(int year, int month, int day, int hour, int minute, int second) {
+  unsigned long secMinute = 60;
+  unsigned long secHour = 60 * secMinute;
+  unsigned long secDay = 24 * secHour;
+  unsigned long secYear = 365 * secDay;
+  int dayMonth[] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
+
+  // leap years
+  int leapDays = (year >> 2) + 1;
+  if (((year & 3) == 0) && month < 3)
+    leapDays--;
+
+  // calculate
+  return year * secYear + (dayMonth[month-1] + (day-1) + leapDays) * secDay + hour * secHour + minute * secMinute + second + T2000UTC;
+}
+
+double convertSectorValue(uint16_t value,int toUnit){
+  if(toUnit == 0){
+      return value;
+  }
+  if(toUnit == 1){
+      return (double)value*1.4503827640391;
+  }
+  if(toUnit == 2){
+      return (double)value * 1.01972;
+  }
+  if(toUnit == 3){
+      return (double)value * 0.1;
+  }
+}
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Interrupts
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
