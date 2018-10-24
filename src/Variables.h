@@ -242,7 +242,7 @@ uint16_t sensorValue = 0;  // variable to store the value coming from the sensor
 float printValue;
 volatile unsigned int setRelay,setDelay;
 long  adcValue;
-float sensorInput,displayValue;
+float sensorInput,displayValue = 0;
 long calDisp[5],calAdc[5];
 long zero ,span;
 int rangeLow = 0,rangeHigh = 600;
@@ -254,26 +254,33 @@ String WifiSSID,WifiPASS;
 uint8_t wifiStatus = 0;
 uint8_t rtcSec,rtcPrevSec;
 int count = 0;
-uint16_t colorValues[4] = {0x07E0,0xFFE0,0xFB20, 0xF800}; //GREEN,YELLOW,ORANGE,RED
+uint16_t colorValues[4] = {0x07E0,0xFFE0,0xFB20, 0xF800}; //{0x07E0,0xFFE0,0xFB20, 0xF800}; //GREEN,YELLOW,ORANGE,RED
 
 uint8_t menuPin = 2;
 uint8_t incPin = 3;
 uint8_t decPin = 18;
 uint8_t nextPin = 19;
 uint8_t dispPin = 7;
+uint8_t menuDelay = 0;
+uint8_t manrstDelay = 0;
 
 //////////////////////  String Declarations     /////////////////////////////////
 
-char* menuNames[] PROGMEM = { "M o d e ",
-                              "S w i t c h ",
-                              "S e c t o r ",
+char* menuNames[] PROGMEM = { "M o d e",
+                              "S w i t c h",
+                              "S e c t o r",
                               "T r a n s m i t t e r",
-                              "T i m e  &  D a t e  ",
+                              "T i m e  &  D a t e",
                               "D a t a   L o g",
                               "S e t t i n g s",
                             };
 char* modeNames[] PROGMEM = { "U n i t",
                               "S c r e e n"
+                            };
+char* mode1Names[] PROGMEM = { "P r e s s u r e",
+                              "D i f f   P r e s s u r e",
+                              "F o r c e",
+                              "L e v e l",
                             };
 char* relayNames[] PROGMEM = {"R e l a y   1",
                               "R e l a y   2",
@@ -312,10 +319,10 @@ char* positionNames[] PROGMEM = { "O f f",
                                   " O n "
                      };
 char* autoNames[] PROGMEM = { "M a n u a l",
-                              "  A u t o  "
+                              "  A u t o              "
                             };
-char* unitNames[] PROGMEM = { "       b a r       ",
-                              "       p s i       ",
+char* unitNames[] PROGMEM = { "       b a r          ",
+                              "       p s i          ",
                               "K g / c m 2",
                               "       M P a       ",
                      };
@@ -324,7 +331,7 @@ char* outputNames[] PROGMEM = { "4-20mA",
                                 " 0-5V "
                        };
 char* settingNames[] = { "C a l i b e r a t i o n",
-                         " W i F i",
+                         "W i F i",
                          "C h a n g e   P I N",
                          "D i s p l a y",
                          "I n f o",
@@ -386,7 +393,18 @@ const unsigned char wifi [] PROGMEM = {/*
 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
-const unsigned char BLEQR[] PROGMEM= {0xFF, 0xFF, 0xE3, 0xFF, 0x9F, 0xF1, 0x80, 0x07, 0xFF, 0xFF, 0xFF, 0xFF, 0xE3, 0xFF, 0x9F, 0xF1,
+
+const unsigned char cloud[] PROGMEM = {
+  0x00, 0x80, 0x80, 0xC0, 0xE0, 0xF0, 0xF0, 0xF8, 0xF8, 0xF8, 0xF8, 0xF0, 0xF0, 0xE0, 0x80, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0F, 0x3F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F,
+  0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x3F, 0x1E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+
+
+const unsigned char BLEQR[] PROGMEM= {
+0xFF, 0xFF, 0xE3, 0xFF, 0x9F, 0xF1, 0x80, 0x07, 0xFF, 0xFF, 0xFF, 0xFF, 0xE3, 0xFF, 0x9F, 0xF1,
 0x80, 0x07, 0xFF, 0xFF, 0xFF, 0xFF, 0xE3, 0xFF, 0x9F, 0xF1, 0x80, 0x07, 0xFF, 0xFF, 0xE0, 0x00,
 0xE3, 0x83, 0x80, 0x30, 0x70, 0x06, 0x00, 0x07, 0xE0, 0x00, 0xE3, 0x83, 0x80, 0x30, 0x70, 0x06,
 0x00, 0x07, 0xE7, 0xFC, 0xE0, 0x70, 0x1C, 0x01, 0x81, 0xC6, 0x3F, 0xC7, 0xE7, 0xFC, 0xE0, 0x70,

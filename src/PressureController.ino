@@ -15,13 +15,13 @@
 #include "SdFat.h"
 
 /// System Mode functions
-SYSTEM_MODE(MANUAL);
+SYSTEM_MODE(AUTOMATIC);
 // Startup Functions
 
-STARTUP(WiFi.selectAntenna(ANT_EXTERNAL)); // selects the u.FL antenna
+STARTUP(WiFi.selectAntenna(ANT_INTERNAL)); // selects the u.FL antenna
 STARTUP(System.enableFeature(FEATURE_RESET_INFO));
 // reset the system after 60 seconds if the application is unresponsive
-ApplicationWatchdog wd(10000, System.reset);
+//ApplicationWatchdog wd(10000, System.reset, 1536);
 
 
 /// Set up Function
@@ -31,19 +31,12 @@ void setup() {
   tft.setCursor(0,0);
   tft.setTextWrap(LOW);
   readEEPROM();
-  printValue = printOLED(0,pvUnit,setScreen);
+  printValue = printOLED(displayValue,pvUnit,setScreen);
+  wifiStatus = 1;
   bluetoothCon();
-  if(wifiStatus){
-    WiFi.on();
-    WiFi.connect();
-    Particle.connect();
-  }
-  else{
-    WiFi.off();
-  }
+  Time.zone(+5.5);
   resetLog();
   System.on(all_events, handle_all_the_events);
-  Time.zone(+5.5);
   // Put initialization like pinMode and begin functions here.
     ////////////////////////////////    Pin Declarations   /////////////////////////////////////////////////////
   pinMode(relay1Pin, OUTPUT);
@@ -58,11 +51,11 @@ void setup() {
 
 /////////////////////////////   Initializing Peripherals  //////////////////////////////////////////////////
   myTimer.begin(timerISR, 2000, hmSec);
-  Serial1.begin(9600);
+  Serial1.begin(115200);
   Serial.begin(115200);
   Wire.begin();
   initMCP3424(0x68,0,3,0);    /// add, sr,pga,ch
-  delay(1000);
+  delay(10);
   displayBargraph(0);
 /////////////////////////////   Initializing Variables  ////////////////////////////////////////
   color = GREEN;
@@ -86,33 +79,44 @@ void setup() {
   relay4.relayName = "R4";
 /////////////////////////////   Serial Debug Initializing  //////////////////////////////////////
  serialDebugInit();
+
  /////////////////////////////   EEPROM Address Read     ////////////////////////////////////////
   /////////////////////////////   Wifi Status    ////////////////////////////////////////////////
-
+  if(wifiStatus == 1){
+    WiFi.on();
+  }
+  else{
+    WiFi.off();
+  }
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // loop() runs over and over again, as quickly as it can execute.
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void loop(){
-  wd.checkin();
+  //wd.checkin();
+  if(wifiStatus  == 1){
+    WiFi.connect();
+    Particle.connect();
+  }
   // The core of your code will likely live here.
   while(menuState == LOW){
-    wd.checkin();
-    if(wifiStatus){
+    //wd.checkin();
+    if(wifiStatus == 1){
       tft.drawBitmap(80, 110, wifi, 24, 24,WHITE);
+      //tft.drawBitmap(40, 110, cloud, 24, 24,WHITE);
       if(Particle.connected){
         Particle.process();
       }
     }
     else{
         tft.drawBitmap(80, 110, wifi, 24, 24,BLACK);
+
     }
-    Particle.process();
     bluetoothCon();
     bluetoothEvent();
     debugEvent();
-    rtcSec = Time.second() ;
+    rtcSec = Time.second();
    /////////////////////////////// Relay 1 //////////////////////////////////////
     if( (rtcSec- rtcPrevSec) == scanTime){
       if(dataLogStatus){
@@ -120,25 +124,62 @@ void loop(){
       }
       rtcPrevSec = rtcSec;
     }
-    if( seconds > prevSeconds){
+    if(seconds > prevSeconds){
       initMCP3424(0x68,3,1,0);    /// add, sr,pga,ch
       adcValue = MCP3421getLong(0x68,3); /// add sr
-      Serial1.println(adcValue);
-      displayValue = mapf(adcValue,1150/*calAdc[0]*/,61228/*calAdc[1]*/,0,100); //displayValue = mapf(adcValue,-900,66600,0,100);
-      bargraphValue = mapf(displayValue,0,100,0,50);
-      displayBargraph(bargraphValue);
-      if(checkKeypress() == ENTER){
-          delay(500);
-          if(menuState == LOW){
-            menuState = HIGH;
-          }
-          else if(menuState == HIGH){
-            menuState = LOW;
+      Serial.println(adcValue);
+    //  Serial.println(adcValue);
+        Particle.publish("Adc Value",String(adcValue));
+        displayValue = mapf(adcValue,1150/*calAdc[0]*/,61228/*calAdc[1]*/,0,100); //displayValue = mapf(adcValue,-900,66600,0,100);
+      // z 58381
+      //
+        bargraphValue = mapf(displayValue,0,100,0,50);
+        displayBargraph(bargraphValue);
+        if(checkKeypress() == ENTER){
+          menuDelay++;
+          if(menuDelay == 2){
+            if(menuState == LOW){
+              menuState = HIGH;
+              menuDelay = 0;
+            }
+            else if(menuState == HIGH){
+             menuState = LOW;
+             menuDelay = 0;
+            }
           }
        }
-      //displayBargraph(seconds);
+       if(checkKeypress() == UP){
+          manrstDelay++;
+           if(manrstDelay == 2){
+             tft.fillRect(0,0,128,128,BLACK);
+             while(1){
+               tft.setFont(ARIAL_8);
+               tft.setTextColor(fgColor);
+               tft.setTextSize(1);
+               tft.setCursor(0, 0);
+               tft.print("M A N U A L  R E S E T");
+               tft.drawLine(0,13,128,13,fgColor);
+               ///////////////////////   Button Read Condition   ///////////////////////////
+               if(checkKeypress() == DOWN){
+                 delay(400);
+               }
+               if(checkKeypress() == UP){
+                  delay(400);
+               }
+               if(checkKeypress() == RIGHT){
+                  delay(400);
+               }
+               if(checkKeypress() == LEFT){
+                   delay(400);
+                   tft.fillRect(0,0,128,128,BLACK);
+                   break;
+               }
+             }
+           }
+        }
       printValue = printOLED(displayValue,pvUnit,setScreen);
-      Particle.publish("Pressure",String(displayValue/10,1));
+      String pubString = "D," + String(displayValue/10,1)+","+String(unitNames[pvUnit])+","+String(relay1.upperFlag)+","+String(relay2.upperFlag)+","+String(relay3.upperFlag)+","+String(relay4.upperFlag);
+      Particle.publish("Pressure",pubString);
       checkRelayStatus(displayValue,&relay1,relay1Pin);
       checkRelayStatus(displayValue,&relay2,relay2Pin);
       checkRelayStatus(displayValue,&relay3,relay3Pin);
@@ -176,7 +217,7 @@ void loop(){
   /////   Next = 0   First Menu Display
   ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
     while( (menuState == HIGH) && (next == 0)){
-      wd.checkin();
+    //wd.checkin();
       if(Particle.connected){
         Particle.process();
       }
@@ -190,6 +231,7 @@ void loop(){
         /// Display list with Selected String
         // variables passed : FONT,Display List,Selected Item, max values in string,Selection Color,Foreground Color, BackGround Color
         selectMenuString(ARIAL_8,menuNames,inc0,7,selColor,fgColor,bgColor);
+
         menuFlagH = HIGH;
       }
       //wd.checkin();
@@ -237,7 +279,7 @@ void loop(){
     /////   Next = 1    go one step inside the menu
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
     while((menuState == HIGH) && (next == 1)){
-      wd.checkin();
+      //wd.checkin();
       tft.setFont(ARIAL_8);
       tft.setTextColor(fgColor,bgColor);
       tft.setTextSize(1);
@@ -246,8 +288,8 @@ void loop(){
       tft.drawLine(0,13,128,13,fgColor);
       /////////////////////////////////////////////////////////////////////////////////////////////////////////////
       //   INC  =
-      while(inc0 == 0)    {
-        wd.checkin();
+      while(inc0 == 0){
+        //wd.checkin();
         if(Particle.connected){
           Particle.process();
         }
@@ -295,7 +337,7 @@ void loop(){
       ////////   INC  = 1  Displays Relay names
       while(inc0 == 1)
       {
-        wd.checkin();
+      //  wd.checkin();
         if(Particle.connected){
           Particle.process();
         }
@@ -344,7 +386,7 @@ void loop(){
       ///////   INC  = 2 Displays sector Names
       while(inc0 == 2)
       {
-        wd.checkin();
+        //wd.checkin();
         if(Particle.connected){
           Particle.process();
         }
@@ -393,7 +435,7 @@ void loop(){
       ///////   INC  = 3 Diplays Transmitter Menu inside
       while(inc0 == 3)
       {
-        wd.checkin();
+      //  wd.checkin();
         if(Particle.connected){
           Particle.process();
         }
@@ -443,7 +485,7 @@ void loop(){
       //////  Diplays date and time
       while(inc0 == 4)
       {
-        wd.checkin();
+        //wd.checkin();
         if(Particle.connected){
           Particle.process();
         }
@@ -491,7 +533,7 @@ void loop(){
       ///////////////////////////////////////////////////////////////////////////////////////////////////////////
       ///////   INC  = 5  Diplays datalog
       while(inc0 == 5){
-        wd.checkin();
+      //  wd.checkin();
         if(Particle.connected){
           Particle.process();
         }
@@ -539,7 +581,7 @@ void loop(){
       ///////////////////////////////////////////////////////////////////////////////////////////////////////////
       ///////   INC  = 6 Diplays settins Menu
       while(inc0 == 6){
-        wd.checkin();
+        //wd.checkin();
         if(Particle.connected){
           Particle.process();
         }
@@ -591,14 +633,14 @@ void loop(){
     // NEXT  = 2
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     while((menuState == HIGH) && (next == 2)){
-      wd.checkin();
-      inc2  = 0;
+      //wd.checkin();
+    //  inc2  = pvUnit;
       ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
       // menu for Mode
       ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
       //// Display Inside Mode and Unit
       while((inc0 == 0) && (inc1 == 0)){
-        wd.checkin();
+        //wd.checkin();
         if(Particle.connected){
           Particle.process();
         }
@@ -662,8 +704,9 @@ void loop(){
       }//while inc0 == 1   inc1 == 0
       ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
       //// Display Inside  Screen
+        //inc2  = setScreen;
       while((inc0 == 0) && (inc1 == 1)){
-        wd.checkin();
+        //wd.checkin();
         if(Particle.connected){
           Particle.process();
         }
@@ -733,8 +776,9 @@ void loop(){
       ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
       ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
       //// Display Inside Relay Relay 1, Relay 2, Relay 3, Relay 4
+      //  inc2  = 0;
       while((inc0 == 1) && (inc1 < 4)){
-        wd.checkin();
+        //wd.checkin();
         if(Particle.connected){
           Particle.process();
         }
@@ -785,8 +829,9 @@ void loop(){
       // menu for Sectors
       ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
       //// Display Inside Sector Sector1, Sector 2, Sector 3 ,Sector 4
+      //inc2 = 0;
       while((inc0 == 2) && (inc1 < 4)){
-        wd.checkin();
+        //wd.checkin();
         if(Particle.connected){
           Particle.process();
         }
@@ -843,7 +888,7 @@ void loop(){
       tempVar[2] = Time.second();
       pos = 0;
       while((inc0 == 4) && (inc1 == 0)){
-        wd.checkin();
+        //wd.checkin();
         if(Particle.connected){
           Particle.process();
         }
@@ -946,7 +991,7 @@ void loop(){
       tempVar[2] = Time.year();
       pos = 0;
       while((inc0 == 4) && (inc1 == 1)){
-        wd.checkin();
+      //  wd.checkin();
         if(Particle.connected){
           Particle.process();
         }
@@ -1046,8 +1091,9 @@ void loop(){
         /////////////////////////////////////////////////////////////////////////////////;
       }//while inc0 == 4   inc1 == 1 Date
       /////////////////////    Data Log on and off    ////////////////////////////////////////////////////////
+      //inc2 = dataLogStatus;
       while( (inc0 == 5) && (inc1 == 0)){
-        wd.checkin();
+        //wd.checkin();
         if(Particle.connected){
           Particle.process();
         }
@@ -1120,7 +1166,7 @@ void loop(){
     tempVar[2] = ones - 48;
     pos = 0;
     while( (inc0 == 5) && (inc1 == 1)){
-      wd.checkin();
+      //wd.checkin();
       if(Particle.connected){
         Particle.process();
       }
@@ -1185,7 +1231,7 @@ void loop(){
     }//while inc0 == 5 inc1 == 1
     /////////////////////    Calibration Status   ////////////////////////////////////////////
     while( (inc0 == 6) && (inc1 == 0)){
-      wd.checkin();
+      //wd.checkin();
       if(Particle.connected){
         Particle.process();
       }
@@ -1215,7 +1261,7 @@ void loop(){
     //inc2 = wifiStatus;
     /////////////////////    Wi fi Status on and off    /////////////////////////////////
     while( (inc0 == 6) && (inc1 == 1)){
-      wd.checkin();
+      //wd.checkin();
       if(Particle.connected){
         Particle.process();
       }
@@ -1257,8 +1303,16 @@ void loop(){
       if(checkKeypress() == ENTER){
         menuFlagH = LOW;
         delay(400);
-        dataLogStatus = inc2;
+        wifiStatus = inc2;
         EEPROM.write(ADD_WIFI_STATUS,wifiStatus);
+        if(wifiStatus == 1){
+          WiFi.on();
+          WiFi.connect();
+          Particle.connect();
+        }
+        else{
+          WiFi.off();
+        }
         next--;
         break;
       }
@@ -1272,7 +1326,7 @@ void loop(){
     }//while inc0 == 6  inc1 == 1
     /////////////////////    Change Pin to be made later///////////////////////////////
     while( (inc0 == 6) && (inc1 == 2)){
-      wd.checkin();
+      //wd.checkin();
       if(Particle.connected){
         Particle.process();
       }
@@ -1306,7 +1360,7 @@ void loop(){
     }//while inc0 == 6  inc1 == 2
     //////////////   Display Menu  /////////////////////////////////////
     while((inc0 == 6) && (inc1 == 3)){
-      wd.checkin();
+      //wd.checkin();
       if(Particle.connected){
         Particle.process();
       }
@@ -1355,7 +1409,7 @@ void loop(){
     }//while inc0 == 2   inc1 == 3
     /////////////////////    Setup INFORMATION about the Device////////////////////////////////////////////
     while( (inc0 == 6) && (inc1 == 4)){
-      wd.checkin();
+    //  wd.checkin();
       if(Particle.connected){
         Particle.process();
       }
@@ -1386,7 +1440,7 @@ void loop(){
         tft.print(firmware);
         tft.setCursor(0,85);
         tft.print("Output");
-        tft.setCursor(50,45);
+        tft.setCursor(60,85);
         tft.print(outputNames[outputType]);
         menuFlagH = HIGH;
       }
@@ -1407,7 +1461,7 @@ void loop(){
   }//while inc0 == 6  inc1 == 4
     /////////////////////    help ////////////////////////////////////////////
     while( (inc0 == 6) && (inc1 == 5)){
-      wd.checkin();
+      //wd.checkin();
       if(Particle.connected){
         Particle.process();
       }
@@ -1457,7 +1511,7 @@ void loop(){
   }//while inc0 == 6  inc1 == 5
     /////////////////////    Fa ]ctory Reset ////////////////////////////////////////////
     while( (inc0 == 6) && (inc1 ==  6)){
-      wd.checkin();
+    //  wd.checkin();
       if(Particle.connected){
         Particle.process();
       }
@@ -1509,11 +1563,11 @@ void loop(){
   ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   inc3= 0;
   while((menuState == HIGH) && (next == 3)){
-    wd.checkin();
+    //wd.checkin();
   ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   //// Display Inside Relay Lower Upper and Manual Reset
     while( (inc0 == 1) && (inc1 < 4) && (inc2 < 2)){
-      wd.checkin();
+      //wd.checkin();
       if(Particle.connected){
         Particle.process();
       }
@@ -1565,7 +1619,7 @@ void loop(){
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
     //// Display Inside Relay 1 Manual Reset
     while( (inc0 == 1) && (inc1 < 4) && (inc2 == 2)){
-      wd.checkin();
+      //wd.checkin();
       if(Particle.connected){
         Particle.process();
       }
@@ -1612,10 +1666,10 @@ void loop(){
       }
       if(checkKeypress() == ENTER){
         delay(400);
-        if(inc1 == 0){relay1.manRst = inc3;}//EEPROM.write(ADD_RLY1_MANRST,relay1.manRst);}
-        if(inc1 == 1){relay2.manRst = inc3;}//EEPROM.write(ADD_RLY2_MANRST,relay2.manRst);}
-        if(inc1 == 2){relay3.manRst = inc3;}//EEPROM.write(ADD_RLY3_MANRST,relay3.manRst);}
-        if(inc1 == 3){relay4.manRst = inc3;}//EEPROM.write(ADD_RLY4_MANRST,relay4.manRst);}
+        if(inc1 == 0){relay1.manRst = inc3;EEPROM.write(ADD_RLY1_MANRST,relay1.manRst);}
+        if(inc1 == 1){relay2.manRst = inc3;EEPROM.write(ADD_RLY2_MANRST,relay2.manRst);}
+        if(inc1 == 2){relay3.manRst = inc3;EEPROM.write(ADD_RLY3_MANRST,relay3.manRst);}
+        if(inc1 == 3){relay4.manRst = inc3;EEPROM.write(ADD_RLY4_MANRST,relay4.manRst);}
         inc3 = 0;
         next--;
         menuFlagH = LOW;
@@ -1647,7 +1701,7 @@ void loop(){
     tempVar[3] = ones - 48;
     pos = 0;
     while( (inc0 == 2) && (inc1 < 4) && (inc2 < 2)){
-      wd.checkin();
+      //wd.checkin();
       if(Particle.connected){
         Particle.process();
       }
@@ -1698,22 +1752,45 @@ void loop(){
         if(checkKeypress() == ENTER){
           delay(400);
           if(inc1 == 0){
-            if(inc2 == 0)sector1.lowerSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
-            if(inc2 == 1)sector1.upperSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+            if(inc2 == 0){
+              sector1.lowerSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+              EEPROM.put(ADD_SEC1_LOWERSET,sector1.lowerSet);
+            }
+            if(inc2 == 1){
+              sector1.upperSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+              EEPROM.put(ADD_SEC1_UPPERSET,sector1.upperSet);
+            }
           }
           if(inc1 == 1){
-            if(inc2 == 0)sector2.lowerSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
-            if(inc2 == 1)sector2.upperSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+            if(inc2 == 0){
+              sector2.lowerSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+              EEPROM.put(ADD_SEC2_LOWERSET,sector2.lowerSet);
+            }
+            if(inc2 == 1){
+              sector2.upperSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+              EEPROM.put(ADD_SEC2_UPPERSET,sector2.upperSet);
+            }
           }
           if(inc1 == 2){
-            if(inc2 == 0)sector3.lowerSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
-            if(inc2 == 1)sector3.upperSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+            if(inc2 == 0){
+              sector3.lowerSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+              EEPROM.put(ADD_SEC3_LOWERSET,sector3.lowerSet);
+            }
+            if(inc2 == 1){
+              sector3.upperSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+              EEPROM.put(ADD_SEC3_UPPERSET,sector3.upperSet);
+            }
           }
           if(inc1 == 3){
-            if(inc2 == 0)sector4.lowerSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
-            if(inc2 == 1)sector4.upperSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+            if(inc2 == 0){
+              sector4.lowerSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+              EEPROM.put(ADD_SEC4_LOWERSET,sector4.lowerSet);
+            }
+            if(inc2 == 1){
+              sector4.upperSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+              EEPROM.put(ADD_SEC4_UPPERSET,sector4.upperSet);
+            }
           }
-          //EPROM.writeInt(ADD_RLY3_LOWERSET,relay3.lowerSet);
           next--;
           menuFlagH = LOW;
           break;
@@ -1722,7 +1799,7 @@ void loop(){
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
     //// Sector colour Set
     while( (inc0 == 2) && (inc1 < 4) && (inc2 == 2)){
-      wd.checkin();
+    //  wd.checkin();
       if(Particle.connected){
         Particle.process();
       }
@@ -1730,7 +1807,11 @@ void loop(){
       tft.setTextColor(fgColor,bgColor);
       tft.setTextSize(1);
       tft.setCursor(0,0);
-      tft.print("Colour");
+      tft.print("Colour       ");
+      if(inc1 == 0)tft.print(colorNames[sector1.color]);
+      if(inc1 == 1)tft.print(colorNames[sector2.color]);
+      if(inc1 == 2)tft.print(colorNames[sector3.color]);
+      if(inc1 == 3)tft.print(colorNames[sector4.color]);
       tft.drawLine(0,13,128,13,fgColor);
       if(menuFlagH == LOW){
         tft.setFont(ARIAL_12);
@@ -1769,10 +1850,22 @@ void loop(){
       }
       if(checkKeypress() == ENTER){
         delay(400);
-        if(inc1 == 0){sector1.color = inc3;}//EEPROM.write(ADD_RLY1_MANRST,relay1.manRst);}
-        if(inc1 == 1){sector2.color = inc3;}//EEPROM.write(ADD_RLY2_MANRST,relay2.manRst);}
-        if(inc1 == 2){sector3.color = inc3;}//EEPROM.write(ADD_RLY3_MANRST,relay3.manRst);}
-        if(inc1 == 3){sector4.color = inc3;}//EEPROM.write(ADD_RLY4_MANRST,relay4.manRst);}
+        if(inc1 == 0){
+          sector1.color = inc3;
+          EEPROM.put(ADD_SEC1_COLOR,sector1.color);
+        }
+        if(inc1 == 1){
+          sector2.color = inc3;
+          EEPROM.put(ADD_SEC2_COLOR,sector2.color);
+        }
+        if(inc1 == 2){
+          sector3.color = inc3;
+          EEPROM.put(ADD_SEC3_COLOR,sector3.color);
+        }
+        if(inc1 == 3){
+          sector4.color = inc3;
+          EEPROM.put(ADD_SEC4_COLOR,sector4.color);
+        }
         inc3 = 0;
         next--;
         menuFlagH = LOW;
@@ -1782,8 +1875,9 @@ void loop(){
     }//while end Color Set for Sector
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
     //// Display scroll
+    //inc3 = dispScroll;
     while( (inc0 == 6) && (inc1 == 3) && (inc2 == 0)){
-      wd.checkin();
+      //wd.checkin();
       if(Particle.connected){
         Particle.process();
       }
@@ -1799,7 +1893,7 @@ void loop(){
         tft.setTextColor(fgColor,bgColor);
         tft.setTextSize(1);
         tft.setCursor(10,54);
-        tft.print(autoNames[inc2]);
+        tft.print(autoNames[inc3]);
         tft.setFont(GLCDFONT);
         tft.drawChar(charPos2[3],35,30,fgColor,bgColor,2);
         tft.drawChar(charPos2[3],75,31,fgColor,bgColor,2);
@@ -1818,7 +1912,7 @@ void loop(){
         delay(400);
         inc3--;
         menuFlagH = LOW;
-        if( inc2 < 0){
+        if(inc3 < 0){
          inc3 = 0;
         }
       }
@@ -1846,7 +1940,7 @@ void loop(){
     tempVar[2] = ones - 48;
     pos = 0;
     while( (inc0 == 6) && (inc1 == 3) && (inc2 == 1)){
-      wd.checkin();
+      //wd.checkin();
       if(Particle.connected){
         Particle.process();
       }
@@ -1869,16 +1963,17 @@ void loop(){
        menuFlagH = LOW;
            if( tempVar[pos+1] > 9)
            {
-            tempVar[pos+1] = 0;
+            tempVar[pos+1] = 9;
            }
        menuFlagH = LOW;
       }
       if(checkKeypress() == DOWN){
-       delay(400);
-       menuFlagH = LOW;
-       if(pos > 0){
-         pos--;
-       }
+         delay(400);
+         tempVar[pos+1]--;
+         menuFlagH = LOW;
+         if( tempVar[pos+1] < 0){
+          tempVar[pos+1] = 0;
+         }
       }
       if(checkKeypress() == ENTER){
        delay(400);
@@ -1910,7 +2005,7 @@ void loop(){
     }//while end Display scroll time
     //// Help User Manual
     while( (inc0 == 6) && (inc1 == 5) && (inc2 == 0)){
-      wd.checkin();
+      //wd.checkin();
       if(Particle.connected){
         Particle.process();
       }
@@ -1936,7 +2031,7 @@ void loop(){
     }//while end user Manual
     //// Help Operations Manual
     while( (inc0 == 6) && (inc1 == 5) && (inc2 == 1)){
-      wd.checkin();
+      //wd.checkin();
       if(Particle.connected){
         Particle.process();
       }
@@ -1993,7 +2088,7 @@ void loop(){
   // NEXT  = 4
   ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   while( (menuState == HIGH) && (next == 4)  ){
-    wd.checkin();
+    //wd.checkin();
     /////  Display inside the relay upper or lower set
     if(inc1 == 0){
       if(inc2 == 0)hex2bcd(relay1.lowerSet);
@@ -2067,22 +2162,45 @@ void loop(){
         if(checkKeypress() == ENTER){
           delay(400);
           if(inc1 == 0){
-            if(inc2 == 0)relay1.lowerSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
-            if(inc2 == 1)relay1.upperSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+            if(inc2 == 0){
+              relay1.lowerSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+              EEPROM.put(ADD_RLY1_LOWERSET,relay1.lowerSet);
+            }
+            if(inc2 == 1){
+              relay1.upperSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+              EEPROM.put(ADD_RLY1_UPPERSET,relay1.upperSet);
+            }
           }
           if(inc1 == 1){
-            if(inc2 == 0)relay2.lowerSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
-            if(inc2 == 1)relay2.upperSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+            if(inc2 == 0){
+              relay2.lowerSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+              EEPROM.put(ADD_RLY2_LOWERSET,relay2.lowerSet);
+            }
+            if(inc2 == 1){
+              relay2.upperSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+              EEPROM.put(ADD_RLY2_UPPERSET,relay2.upperSet);
+            }
           }
           if(inc1 == 2){
-            if(inc2 == 0)relay3.lowerSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
-            if(inc2 == 1)relay3.upperSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+            if(inc2 == 0){
+              relay3.lowerSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+              EEPROM.put(ADD_RLY3_LOWERSET,relay3.lowerSet);
+            }
+            if(inc2 == 1){
+              relay3.upperSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+              EEPROM.put(ADD_RLY3_UPPERSET,relay3.upperSet);
+            }
           }
           if(inc1 == 3){
-            if(inc2 == 0)relay4.lowerSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
-            if(inc2 == 1)relay4.upperSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+            if(inc2 == 0){
+              relay4.lowerSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+              EEPROM.put(ADD_RLY4_LOWERSET,relay4.lowerSet);
+            }
+            if(inc2 == 1){
+              relay4.upperSet = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+              EEPROM.put(ADD_RLY4_UPPERSET,relay4.upperSet);
+            }
           }
-          //EPROM.writeInt(ADD_RLY3_LOWERSET,relay3.lowerSet);
           next--;
           menuFlagH = LOW;
           break;
@@ -2111,7 +2229,7 @@ void loop(){
     tempVar[2] = ones - 48;
     pos = 0;
     while( (inc0 == 1) && (inc1 < 4) && (inc2 <2) && (inc3 == 1)){
-      wd.checkin();
+      //wd.checkin();
       if(Particle.connected){
         Particle.process();
       }
@@ -2128,18 +2246,18 @@ void loop(){
       ///////////////////////   Button Read Condition   ///////////////////////////
       if(checkKeypress() == UP){
           delay(400);
-          tempVar[pos]++;
+          tempVar[pos+1]++;
           menuFlagH = LOW;
-          if( tempVar[pos] > 9){
-            tempVar[pos] = 9;
+          if( tempVar[pos+1] > 9){
+            tempVar[pos+1] = 9;
           }
        }
        if(checkKeypress() == DOWN){
            delay(400);
-           tempVar[pos]--;
+           tempVar[pos+1]--;
            menuFlagH = LOW;
-           if(tempVar[pos]< 0){
-             tempVar[pos] = 0;
+           if(tempVar[pos+1]< 0){
+             tempVar[pos+1] = 0;
            }
         }
         if(checkKeypress() == RIGHT){
@@ -2162,20 +2280,44 @@ void loop(){
         if(checkKeypress() == ENTER){
           delay(400);
           if(inc1 == 0){
-            if(inc2 == 0)relay1.lowerDelay = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
-            if(inc2 == 1)relay1.upperDelay = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+            if(inc2 == 0){
+              relay1.lowerDelay = (tempVar[1] * 10) + tempVar[2];
+              EEPROM.put(ADD_RLY1_LOWERDEL,relay1.lowerDelay);
+            }
+            if(inc2 == 1){
+              relay1.upperDelay = (tempVar[1] * 10) + tempVar[2];
+              EEPROM.put(ADD_RLY1_UPPERDEL,relay1.upperDelay);
+            }
           }
           if(inc1 == 1){
-            if(inc2 == 0)relay2.lowerDelay = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
-            if(inc2 == 1)relay2.upperDelay = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+            if(inc2 == 0){
+              relay2.lowerDelay = (tempVar[1] * 10) + tempVar[2];
+              EEPROM.put(ADD_RLY2_LOWERDEL,relay2.lowerDelay);
+            }
+            if(inc2 == 1){
+              relay2.upperDelay = (tempVar[1] * 10) + tempVar[2];
+              EEPROM.put(ADD_RLY2_UPPERDEL,relay2.upperDelay);
+            }
           }
           if(inc1 == 2){
-            if(inc2 == 0)relay3.lowerDelay = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
-            if(inc2 == 1)relay3.upperDelay = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+            if(inc2 == 0){
+              relay3.lowerDelay = (tempVar[1] * 10) + tempVar[2];
+              EEPROM.put(ADD_RLY3_LOWERDEL,relay3.lowerDelay);
+            }
+            if(inc2 == 1){
+              relay3.upperDelay = (tempVar[1] * 10) + tempVar[2];
+              EEPROM.put(ADD_RLY3_UPPERDEL,relay3.upperDelay);
+            }
           }
           if(inc1 == 3){
-            if(inc2 == 0)relay4.lowerDelay = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
-            if(inc2 == 1)relay4.upperDelay = (tempVar[0] * 1000) + (tempVar[1] * 100) + (tempVar[2] * 10) + tempVar[3];
+            if(inc2 == 0){
+              relay4.lowerDelay = (tempVar[1] * 10) + tempVar[2];
+              EEPROM.put(ADD_RLY4_LOWERDEL,relay4.lowerDelay);
+            }
+            if(inc2 == 1){
+              relay4.upperDelay = (tempVar[1] * 10) + tempVar[2];
+              EEPROM.put(ADD_RLY4_UPPERDEL,relay4.upperDelay);
+            }
           }
           next--;
           menuFlagH = LOW;
@@ -2215,11 +2357,11 @@ uint8_t checkKeypress(){
   }
   Wire.endTransmission();
   if(c == 0) return 0;
-  if (c & ENTER_BUT) { Serial.println("Enter Key Pressed");return 1 ;}
-  if (c & RIGHT_BUT) { Serial.println("Right Key Pressed");return 2;}
-  if (c & LEFT_BUT) {Serial.println("Left Key Pressed");return 3;}
-  if (c & DOWN_BUT){Serial.println("Down Key Pressed");return 4;}
-  if (c & UP_BUT) {Serial.println("Up Key Pressed");return 5;}
+  if (c & ENTER_BUT) { /*Serial.println("Enter Key Pressed");*/return 1 ;}
+  if (c & RIGHT_BUT) { /*Serial.println("Right Key Pressed");*/return 2;}
+  if (c & LEFT_BUT) {/*Serial.println("Left Key Pressed");*/return 3;}
+  if (c & DOWN_BUT){/*Serial.println("Down Key Pressed");*/return 4;}
+  if (c & UP_BUT) {/*Serial.println("Up Key Pressed");*/return 5;}
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Print all the things on OLED
@@ -2453,22 +2595,21 @@ void screen4(long value,int unit){
 ///  Print Color According to Sector
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 unsigned int printSector(unsigned int value){
-    unsigned int color;
-    if((value >=convertSectorValue(sector1.lowerSet,pvUnit)) && (value <= convertSectorValue(sector1.upperSet,pvUnit))){
-        return colorValues[sector1.color];
-    }
-    else if((value > convertSectorValue(sector2.lowerSet,pvUnit)) && (value <= convertSectorValue(sector2.upperSet,pvUnit))){
-        return colorValues[sector2.color];
-    }
-    else if((value > convertSectorValue(sector3.lowerSet,pvUnit)) && (value <= convertSectorValue(sector3.upperSet,pvUnit))){
-        return colorValues[sector3.color];
-    }
-    else if((value > convertSectorValue(sector4.lowerSet,pvUnit)) && (value <= convertSectorValue(sector4.upperSet,pvUnit))){
-       return colorValues[sector4.color];
-    }
-    else{
-      return BLACK;
-    }
+  if((value >= sector1.lowerSet) && (value <= sector1.upperSet)){
+    return colorValues[sector1.color];
+  }
+  else if((value >= sector2.lowerSet) && (value <= sector2.upperSet)){
+      return colorValues[sector2.color];
+  }
+  else if((value >= sector3.lowerSet) && (value <= sector3.upperSet)){
+    return colorValues[sector3.color];
+  }
+  else if((value >= sector4.lowerSet) && (value <= sector4.upperSet)){
+    return colorValues[sector4.color];
+  }
+  else{
+    return BLACK;
+  }
 }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///  Print Status of the Relays on the Front Screen
@@ -2720,7 +2861,7 @@ void bluetoothEvent(){
     EEPROM.write(ADD_SCREEN ,setScreen);
     // Range High
     index[0] = inString.indexOf(',',7);
-    tempInt = inString.substring(3, index[0]).toInt() * 10;
+    tempInt = inString.substring(3, index[0]).toInt();
     if(rangeHigh != tempInt){
       settingsChangeLog("Range Span Value ",String(rangeHigh),String(tempInt));
     }
@@ -2729,7 +2870,7 @@ void bluetoothEvent(){
     // Range Low
     tempString = inString.substring(index[0]+1, length);
     index[0] = tempString.indexOf(',');
-    tempInt = tempString.substring(0, index[0]).toInt() * 10;
+    tempInt = tempString.substring(0, index[0]).toInt();
     if(rangeLow != tempInt){
       settingsChangeLog("Range Zero Value ",String(rangeLow),String(tempInt));
     }
@@ -2743,10 +2884,10 @@ void bluetoothEvent(){
     int tempRelay[4];
     int length = inString.length();
     index[0] = inString.indexOf(',',3);
-    tempRelay[0] = inString.substring(3, index[0]).toInt() * 10;
+    tempRelay[0] = inString.substring(3, index[0]).toInt();
     tempString = inString.substring(index[0]+1, length);
     index[0] = tempString.indexOf(',');
-    tempRelay[1] = tempString.substring(0, index[0]).toInt() * 10;
+    tempRelay[1] = tempString.substring(0, index[0]).toInt();
     tempString = tempString.substring(index[0]+1,length);
     index[0] = tempString.indexOf(',');
     tempRelay[2] = tempString.substring(0, index[0]).toInt();
@@ -2852,10 +2993,10 @@ void bluetoothEvent(){
     int tempRelay[4];
     int length = inString.length();
     index[0] = inString.indexOf(',',3);
-    tempRelay[0] = inString.substring(3, index[0]).toInt() * 10;
+    tempRelay[0] = inString.substring(3, index[0]).toInt();
     tempString = inString.substring(index[0]+1, length);
     index[0] = tempString.indexOf(',');
-    tempRelay[1] = tempString.substring(0, index[0]).toInt() * 10;
+    tempRelay[1] = tempString.substring(0, index[0]).toInt();
     tempString = tempString.substring(index[0]+1,length);
     index[0] = tempString.indexOf(',');
     tempRelay[2] = tempString.substring(0, index[0]).toInt();
@@ -2875,7 +3016,7 @@ void bluetoothEvent(){
         settingsChangeLog("Sector 1 Color Value ",colorNames[sector1.color],colorNames[tempRelay[2]]);
       }
       sector1.color = tempRelay[2];
-      EEPROM.put(ADD_SEC1_COLOR,sector1.color);
+      EEPROM.put(ADD_SEC1_COLOR,(uint8_t)sector1.color);
     }
     /////////////////////////////////////   SECTOR 2   /////////////////////////////////////////////////////
     if(inString.charAt(1) == '2'){
@@ -2893,7 +3034,7 @@ void bluetoothEvent(){
         settingsChangeLog("Sector 2 Color Value ",colorNames[sector2.color],colorNames[tempRelay[2]]);
       }
       sector2.color = tempRelay[2];
-      EEPROM.put(ADD_SEC2_COLOR,sector2.color);
+      EEPROM.put(ADD_SEC2_COLOR,(uint8_t)sector2.color);
     }
     /////////////////////////////////////   SECTOR 3   /////////////////////////////////////////////////////
     if(inString.charAt(1) == '3'){
@@ -2911,7 +3052,7 @@ void bluetoothEvent(){
         settingsChangeLog("Sector 3 Color Value ",colorNames[sector3.color],colorNames[tempRelay[2]]);
       }
       sector3.color = tempRelay[2];
-      EEPROM.put(ADD_SEC3_COLOR,sector3.color);
+      EEPROM.put(ADD_SEC3_COLOR,(uint8_t)sector3.color);
     }
     /////////////////////////////////////  SECTOR 4   /////////////////////////////////////////////////////
     if(inString.charAt(1) == '4'){
@@ -2929,7 +3070,7 @@ void bluetoothEvent(){
         settingsChangeLog("Sector 4 Color Value ",colorNames[sector4.color],colorNames[tempRelay[2]]);
       }
       sector4.color = tempRelay[2];
-      EEPROM.put(ADD_SEC4_COLOR,sector4.color);
+      EEPROM.put(ADD_SEC4_COLOR,(uint8_t)sector4.color);
     }
   }
   //////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -3122,7 +3263,7 @@ void bluetoothEvent(){
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void factoryReset(){
   EEPROM.write(ADD_UNIT,0);
-  EEPROM.write(ADD_SCREEN,0);
+  EEPROM.write(ADD_SCREEN,2);
   EEPROM.put(ADD_RANGEH,(int)100);
   EEPROM.put(ADD_RANGEL,(int)0);
   EEPROM.write(ADD_WIFI_STATUS,1);
@@ -3130,8 +3271,8 @@ void factoryReset(){
   EEPROM.write(ADD_DATALOG_TIME,1);
   EEPROM.put(ADD_RLY1_UPPERSET,(uint16_t)20);
   EEPROM.put(ADD_RLY1_LOWERSET,(uint16_t)10);
-  EEPROM.put(ADD_RLY1_UPPERDEL,(uint16_t)3);
-  EEPROM.put(ADD_RLY1_LOWERDEL,(uint16_t)3);
+  EEPROM.put(ADD_RLY1_UPPERDEL,(uint16_t)1);
+  EEPROM.put(ADD_RLY1_LOWERDEL,(uint16_t)1);
   EEPROM.put(ADD_RLY2_UPPERSET,(uint16_t)40);
   EEPROM.put(ADD_RLY2_LOWERSET,(uint16_t)30);
   EEPROM.put(ADD_RLY2_UPPERDEL,(uint16_t)2);
@@ -3146,16 +3287,17 @@ void factoryReset(){
   EEPROM.put(ADD_RLY4_LOWERDEL,(uint16_t)0);
   EEPROM.put(ADD_SEC1_LOWERSET,(uint16_t)0);
   EEPROM.put(ADD_SEC1_UPPERSET,(uint16_t)20);
-  EEPROM.put(ADD_SEC1_COLOR,GREEN);
+  EEPROM.put(ADD_SEC1_COLOR,(uint8_t)0);
   EEPROM.put(ADD_SEC2_LOWERSET,(uint16_t)21);
   EEPROM.put(ADD_SEC2_UPPERSET,(uint16_t)50);
-  EEPROM.put(ADD_SEC2_COLOR,YELLOW);
+  EEPROM.put(ADD_SEC2_COLOR,(uint8_t)1);
   EEPROM.put(ADD_SEC3_LOWERSET,(uint16_t)51);
   EEPROM.put(ADD_SEC3_UPPERSET,(uint16_t)80);
-  EEPROM.put(ADD_SEC3_COLOR,ORANGE);
+  EEPROM.put(ADD_SEC3_COLOR,(uint8_t)2);
   EEPROM.put(ADD_SEC4_LOWERSET,(uint16_t)81);
   EEPROM.put(ADD_SEC4_UPPERSET,(uint16_t)100);
-  EEPROM.put(ADD_SEC4_COLOR,RED);
+  EEPROM.put(ADD_SEC4_COLOR,(uint8_t)3);
+  EEPROM.write(ADD_WIFI_STATUS,1);
   System.reset();
 }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -3473,7 +3615,7 @@ void Datalog(){
   myFile.print(":");
   myFile.print(Time.second());
   myFile.print(",");
-  myFile.print(modeNames[mode]);
+  myFile.print(mode1Names[mode]);
   myFile.print(",");
   myFile.print(unitNames[pvUnit]);
   myFile.print(",");
@@ -3876,24 +4018,29 @@ void selectMenuString(uint8_t fontName,char** displayString,int selectedString,i
 {
   int i;
   tft.setFont(fontName);
-  for(i = 0;i < selectedString;i++)
-   {
-     tft.setTextColor(foreColor,bgColor);
-     tft.setTextSize(1);
-     tft.setCursor(0, (i +1)*16 );
-     tft.print(displayString[i]);
-   }
+  for(i = 0;i < selectedString;i++){
+   tft.fillTriangle(118, (i +1)*16, 118, ((i +1)*16)+6, 128, ((i +1)*16)+3, backColor);
+   tft.setTextColor(foreColor,bgColor);
+   tft.setTextSize(1);
+   tft.setCursor(12, (i +1)*16 );
+   tft.print(displayString[i]);
+   tft.fillTriangle(8, (i +1)*16, 8, ((i +1)*16)+6, 0, ((i +1)*16)+3, backColor);
+  }
+
+  tft.fillTriangle(118, (i +1)*16, 118, ((i +1)*16)+6, 128, ((i +1)*16)+3, changeColor);
   tft.setTextColor(changeColor,backColor);
   tft.setTextSize(1);
-  tft.setCursor(0, (selectedString+1) *16);
+  tft.setCursor(12, (selectedString+1) *16);
   tft.print(displayString[selectedString]);
+  tft.fillTriangle(8, (i +1)*16, 8, ((i +1)*16)+6, 0, ((i +1)*16)+3, changeColor);
 
-  for(i = selectedString+1;i < maxValue;i++)
-  {
+  for(i = selectedString+1;i < maxValue;i++)  {
+  tft.fillTriangle(118, (i +1)*16, 118, ((i +1)*16)+6, 128, ((i +1)*16)+3, backColor);
   tft.setTextColor(foreColor,backColor);
   tft.setTextSize(1);
-  tft.setCursor(0, (i + 1)*16 );
+  tft.setCursor(12, (i + 1)*16 );
   tft.print(displayString[i]);
+  tft.fillTriangle(8, (i +1)*16, 8, ((i +1)*16)+6, 0, ((i +1)*16)+3, backColor);
   }
 }
 
@@ -3973,20 +4120,6 @@ unsigned long getTimestamp(int year, int month, int day, int hour, int minute, i
   return year * secYear + (dayMonth[month-1] + (day-1) + leapDays) * secDay + hour * secHour + minute * secMinute + second + T2000UTC;
 }
 
-double convertSectorValue(uint16_t value,int toUnit){
-  if(toUnit == 0){
-      return value;
-  }
-  if(toUnit == 1){
-      return (double)value*1.4503827640391;
-  }
-  if(toUnit == 2){
-      return (double)value * 1.01972;
-  }
-  if(toUnit == 3){
-      return (double)value * 0.1;
-  }
-}
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Interrupts
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
